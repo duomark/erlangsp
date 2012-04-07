@@ -3,10 +3,10 @@ all: deps compile
 deps: deps/erlangsp
 
 deps/erlangsp:
-	@rebar get-deps
+	@./rebar get-deps
 
 compile:
-	@rebar compile
+	@./rebar compile
 
 dialyze: all
 	dialyzer -Wrace_conditions ebin
@@ -19,10 +19,10 @@ gc: crash
 
 rel: all
 	@echo 'Generating erlangsp release'
-	@(cd rel; rebar generate)
+	@(cd rel; ../rebar generate)
 
 clean: gc
-	@rebar clean
+	@./rebar clean
 
 crash:
 	@find . -name "erl_crash.dump" -exec rm -f {} \;
@@ -31,11 +31,11 @@ relclean: crash
 	@rm -rf rel/erlangsp
 
 realclean: clean relclean
-	@rebar del-deps
+	@./rebar del-deps
 	@rm -rf deps/*
 
 test: all
-	ERL_LIBS=$(CURDIR):$(CURDIR)/deps rebar skip_deps=true eunit
+	ERL_LIBS=$(CURDIR):$(CURDIR)/deps ./rebar skip_deps=true eunit
 
 eunit:
 	make test
