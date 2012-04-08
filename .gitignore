@@ -1,3 +1,4 @@
+ctest/logs/*
 .eunit
 *.beam
 deps
