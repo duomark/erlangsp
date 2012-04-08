@@ -1,0 +1,3 @@
+Present to allow git to checkin the logs directory.
+Temporary files are written here to record the results
+of Common Test executions.

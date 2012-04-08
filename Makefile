@@ -9,7 +9,7 @@ compile:
 	@./rebar compile
 
 dialyze: all
-	dialyzer -Wrace_conditions ebin
+	@dialyzer -Wrace_conditions ebin
 
 gc: crash
 	@echo 'Removing all emacs backup files'
@@ -38,4 +38,7 @@ test: all
 	ERL_LIBS=$(CURDIR):$(CURDIR)/deps ./rebar skip_deps=true eunit
 
 eunit:
-	make test
+	@make test
+
+ct: 
+	@(cd ctest; ct_run -spec coop.spec)
