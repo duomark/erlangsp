@@ -36,6 +36,7 @@ realclean: clean relclean
 
 test: all
 	ERL_LIBS=$(CURDIR):$(CURDIR)/deps ./rebar skip_deps=true eunit
+	make ct
 
 eunit:
 	@make test
