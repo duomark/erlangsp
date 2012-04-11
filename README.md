@@ -1,7 +1,9 @@
-Erlang Services Platform (erlang/SP)
+Erlang Services Platform (Erlang/SP)
 ==================================
 
-Erlang/SP is a replacement for erlang/OTP that is designed to scale to 10Ks of processors. OTP allows a designer to architect distributed systems out of single process behaviours to create scaffoldings in the 10-100s of process range geared around a single permanent hierarchical application or a set of single hierarchical applications. SP eschews applications in favor of peer services that replicate and fade as needed, constructing solutions on an architecture functionally composed with patterns of Cooperating Processes. The fundamental unit is a coop (pronounced co'-op) rather than a Pid.
+Erlang/SP is a replacement for Erlang/OTP that is designed to scale to 10Ks of processors. OTP allows a designer to architect distributed systems out of single process behaviours to create scaffoldings in the 10-100s of process range geared around a single permanent hierarchical application or a set of single hierarchical applications. SP eschews applications in favor of peer services that replicate and fade as needed, constructing solutions on an architecture functionally composed with patterns of Cooperating Processes. The fundamental unit is a coop (pronounced co'-op) rather than a Pid.
+
+The ideas behind Erlang/SP are evolving rapidly and constantly in flux. I welcome feedback, but expect any and all interfaces to change without notice. This is an experiment that can run comfortably alongside OTP and is only a "replacement" in the sense that it revisits the tradeoffs and assumptions underlying the philosphy of OTP.
 
 The basic components of an Erlang/SP solution are:
 
@@ -10,6 +12,8 @@ The basic components of an Erlang/SP solution are:
   * cluster: A pack of coops working together to solve a subproblem
   * constellation: A network of clusters
   * universe: A complete system solution
+
+All components offer both Control and Data channels for more efficient management of services. There will be some concept of Overlords/Fiefs which monitor and manage clusters and sprees, as well as a coordinator of constellation topography and migration, but that will require some experience with the basic components to understand what the requirements are. In any event, supervisor behaviour will not resemble the current incarnation of OTP, and allocation of processes will be more of a batch/bulk-oriented operation (probably eventually requiring VM tweaks to enhance process spawning speed).
 
 
 Travis CI
