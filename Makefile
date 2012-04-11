@@ -35,11 +35,10 @@ realclean: clean relclean
 	@rm -rf deps/*
 
 test: all
-	ERL_LIBS=$(CURDIR):$(CURDIR)/deps ./rebar skip_deps=true eunit
 	make ct
 
 eunit:
 	@make test
 
 ct: 
-	@(cd ctest; ct_run -spec coop.spec)
+	@(cd ctest; ct_run -spec coop.spec -pa ../ebin)
