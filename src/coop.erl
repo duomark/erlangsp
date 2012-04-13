@@ -13,15 +13,21 @@
 -author(jayn).
 
 %% Friendly API
--export([pipeline/2]).
+-export([pipeline/2, pipeline/3]).
 
 %% Exports for spawn_link only
 -export([pipe_worker/2]).
 
 
+%%----------------------------------------------------------------------
+%% Pipeline patterns
+%%----------------------------------------------------------------------
 pipeline(NameFnPairs, Receiver) ->
-    CF = coop_flow:pipeline(NameFnPairs),
-    Stages = [digraph:vertex(CF, Name) || {Name, _Fn} <- NameFnPairs],
+    pipeline(coop_flow:pipeline(NameFnPairs), NameFnPairs, Receiver).
+
+pipeline(CoopFlow, NameFnPairs, Receiver)
+  when is_list(NameFnPairs), is_pid(Receiver) ->
+    Stages = [digraph:vertex(CoopFlow, Name) || {Name, _Fn} <- NameFnPairs],
     {FirstStage, Pipeline} =
         lists:foldr(fun(NameFnPair, {NextStage, Workers}) ->
                             spawn_vertex(NameFnPair, {NextStage, Workers})

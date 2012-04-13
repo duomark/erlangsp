@@ -16,7 +16,10 @@
 -export([pipeline/1, chain_vertices/2]).
 
 
-pipeline(NameFnPairs) ->
+%%----------------------------------------------------------------------
+%% Pipeline patterns
+%%----------------------------------------------------------------------
+pipeline(NameFnPairs) when is_list(NameFnPairs) ->
     case length(NameFnPairs) > 1 of
         true ->
             Graph = digraph:new([acyclic]),
