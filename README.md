@@ -15,6 +15,20 @@ The basic components of an Erlang/SP solution are:
 
 All components offer both Control and Data channels for more efficient management of services. There will be some concept of Overlords/Fiefs which monitor and manage clusters and sprees, as well as a coordinator of constellation topography and migration, but that will require some experience with the basic components to understand what the requirements are. In any event, supervisor behaviour will not resemble the current incarnation of OTP, and allocation of processes will be more of a batch/bulk-oriented operation (probably eventually requiring VM tweaks to enhance process spawning speed).
 
+Goals
+=====
+
+The ultimate goal of this project is to provide the average erlang programmer a huge boost in productivity and performance by providing easy access to complex concurrent computation models. In addition the following are considered intermediate goals:
+
+  * Enable dataflow algorithms
+  * Promote graph computation and data storage/access
+  * Provide a toolbox with much higher scalability patterns than OTP offers
+  * Simplify the code to implement common concurrent architectural patterns
+
+Related Work
+============
+
+Apparently the approach I have been designing is a reinvention of Algorithmic Skeletons (http://www.macs.hw.ac.uk/~pm175/F21DP2/l08_handout.pdf) or Skeletal Parallel Programming (http://homepages.inf.ed.ac.uk/mic/Pubs/manifesto.pdf). I only discovered these references after implementing the first proof-of-concept.
 
 Travis CI
 =========
