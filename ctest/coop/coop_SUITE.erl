@@ -5,10 +5,14 @@
 -export([all/0, init_per_suite/1, end_per_suite/1
          %% init_per_testcase/2, end_per_testcase/2
         ]).
--export([coop_flow/1, coop/1]).
+-export([coop_flow_pipeline/1, coop_flow_pipeline_failure/1,
+         coop_flow_fanout/1,   coop_flow_fanout_failure/1,
+         coop/1]).
 -export([receive_pipe_results/0]).
  
-all() -> [coop_flow, coop].
+all() -> [coop_flow_pipeline, coop_flow_pipeline_failure,
+          coop_flow_fanout,   coop_flow_fanout_failure,
+          coop].
 
 example_pipeline_fn_pairs() ->
     %% Pipeline => 3 * (X+2) - 5
@@ -26,11 +30,10 @@ end_per_suite(_Config) -> ok.
 %% init_per_testcase(_Any, _Config) -> ok.
 %% end_per_testcase(_Any, _Config) ->  ok.
 
-coop_flow(_Config) ->
-    try coop_flow:pipeline([a])
-    catch error:{case_clause, false} -> ok
-    end,
-
+%%----------------------------------------------------------------------
+%% Pipeline patterns
+%%----------------------------------------------------------------------
+coop_flow_pipeline(_Config) ->
     PipeProps = example_pipeline_fn_pairs(),
     Pipeline = coop_flow:pipeline(PipeProps),
     PipeStats = digraph:info(Pipeline),
@@ -50,6 +53,59 @@ coop_flow(_Config) ->
     A = digraph:vertex(Pipeline, a),
     B = digraph:vertex(Pipeline, b),
     C = digraph:vertex(Pipeline, c).
+
+coop_flow_pipeline_failure(_Config) ->
+    try coop_flow:pipeline(a)
+    catch error:function_clause -> ok
+    end,
+
+    try coop_flow:pipeline([a])
+    catch error:{case_clause, false} -> ok
+    end.
+
+
+%%----------------------------------------------------------------------
+%% Fanout patterns
+%%----------------------------------------------------------------------
+coop_flow_fanout(_Config) ->
+    Self = self(),
+    Fn = fun(_Msg) -> ok end,
+    CoopFlow = coop_flow:fanout(Fn, 8, Self),
+    10 = digraph:no_vertices(CoopFlow),
+    16 = digraph:no_edges(CoopFlow),
+    check_fanout_vertex(CoopFlow, Fn, inbound,  0, 8),
+    check_fanout_vertex(CoopFlow, Self, outbound, 8, 0),
+    [check_fanout_vertex(CoopFlow, 8, ['$v'|N-1], 1, 1) || N <- lists:seq(1,8)].
+
+check_fanout_vertex(Graph, Fn, inbound = Name, InDegree, OutDegree) ->
+    {Name, Fn} = digraph:vertex(Graph, Name),
+    InDegree   = digraph:in_degree(Graph, Name),
+    OutDegree  = digraph:out_degree(Graph, Name),
+    InDegree   = length(digraph:in_neighbours(Graph, Name)),
+    OutDegree  = length([V || V <- digraph:out_neighbours(Graph, Name), '$v' =:= hd(V), 0 =< tl(V)]);
+check_fanout_vertex(Graph, Pid, outbound = Name, InDegree, OutDegree) ->
+    {Name, Pid} = digraph:vertex(Graph, Name),
+    InDegree    = digraph:in_degree(Graph, Name),
+    OutDegree   = digraph:out_degree(Graph, Name),
+    InDegree    = length([V || V <- digraph:in_neighbours(Graph, Name), '$v' =:= hd(V), 0 =< tl(V)]),
+    OutDegree   = length(digraph:out_neighbours(Graph, Name));
+check_fanout_vertex(Graph, _N, Name, 1, 1) ->    
+    {Name, []} = digraph:vertex(Graph, Name),
+    [inbound] =  digraph:in_neighbours(Graph, Name),
+    [outbound] = digraph:out_neighbours(Graph, Name).
+
+coop_flow_fanout_failure(_Config) ->
+    try coop_flow:fanout(a, 8, self())
+    catch error:function_clause -> ok
+    end,
+    
+    try coop_flow:fanout(fun(_Msg) -> ok end, a, self())
+    catch error:function_clause -> ok
+    end,
+    
+    try coop_flow:fanout(fun(_Msg) -> ok end, 8, 3)
+    catch error:function_clause -> ok
+    end.
 
 coop(_Config) ->
     Pid = spawn_link(?MODULE, receive_pipe_results, []),
