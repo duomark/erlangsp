@@ -37,8 +37,5 @@ realclean: clean relclean
 test: all
 	make ct
 
-eunit:
-	@make test
-
 ct: 
 	@(cd ctest; ct_run -spec coop.spec -pa ../ebin)
