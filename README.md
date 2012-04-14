@@ -1,12 +1,13 @@
 Erlang Services Platform (Erlang/SP)
 ==================================
 
-Erlang/SP is a replacement for Erlang/OTP that is designed to scale to 10Ks of processors. OTP allows a designer to architect distributed systems out of single process behaviours to create scaffoldings in the 10-100s of process range geared around a single permanent hierarchical application or a set of single hierarchical applications. SP eschews applications in favor of peer services that replicate and fade as needed, constructing solutions on an architecture functionally composed with patterns of Cooperating Processes. The fundamental unit is a coop (pronounced co'-op) rather than a Pid.
+Erlang/SP is a replacement for Erlang/OTP that is designed to scale to 10Ks of processors. OTP allows a designer to architect distributed systems out of single process behaviours to create scaffoldings in the 100s-1000s of process range geared around a single permanent hierarchical application or a set of single hierarchical applications. SP eschews applications in favor of peer services that replicate and fade as needed, constructing solutions on an architecture functionally composed with patterns of Cooperating Processes. The fundamental unit is a coop (pronounced co'-op) rather than a Pid.
 
 The ideas behind Erlang/SP are evolving rapidly and constantly in flux. I welcome feedback, but expect any and all interfaces to change without notice. This is an experiment that can run comfortably alongside OTP and is only a "replacement" in the sense that it revisits the tradeoffs and assumptions underlying the philosphy of OTP.
 
 The basic components of an Erlang/SP solution are:
 
+  * [joule: The smallest unit of work]
   * coop: A task-specific (pipeline, round-robin) collection of cooperating processes
   * spree: A flash of activity coordinated amongst several coops
   * cluster: A pack of coops working together to solve a subproblem
@@ -28,7 +29,7 @@ The ultimate goal of this project is to provide the average erlang programmer a 
 Related Work
 ============
 
-Apparently the approach I have been designing is a reinvention of Algorithmic Skeletons (http://www.macs.hw.ac.uk/~pm175/F21DP2/l08_handout.pdf) or Skeletal Parallel Programming (http://homepages.inf.ed.ac.uk/mic/Pubs/manifesto.pdf). I only discovered these references after implementing the first proof-of-concept.
+As of April 12, 2012, I discovered the approach I have been designing is a reinvention of Algorithmic Skeletons (http://www.macs.hw.ac.uk/~pm175/F21DP2/l08_handout.pdf) or Skeletal Parallel Programming (http://homepages.inf.ed.ac.uk/mic/Pubs/manifesto.pdf). I only discovered these references after implementing the first proof-of-concept.
 
 Travis CI
 =========
