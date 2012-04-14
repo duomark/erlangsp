@@ -13,7 +13,7 @@
 -author(jayn).
 
 %% Friendly API
--export([pipeline/2, pipeline/3]).
+-export([pipeline/2, fanout/3]).
 
 %% Exports for spawn_link only
 -export([pipe_worker/2]).
@@ -34,7 +34,7 @@ pipeline(CoopFlow, NameFnPairs, Receiver)
                     end, {Receiver, []}, Stages),
     Procs = digraph:new([acyclic]),
     coop_flow:chain_vertices(Procs, Pipeline),
-    {FirstStage, Procs}.
+    {FirstStage, CoopFlow, Procs}.
 
 spawn_vertex({_Name, Fn}, {Receiver, Workers}) ->
     Pid = proc_lib:spawn_link(?MODULE, pipe_worker, [Fn, Receiver]),
@@ -49,3 +49,21 @@ pipe_worker(Fn, NextStage) ->
             NextStage ! Fn(Msg),
             pipe_worker(Fn, NextStage)
     end.
+
+
+%%----------------------------------------------------------------------
+%% Fanout patterns
+%%----------------------------------------------------------------------
+fanout(Fn, NumWorkers, FanInReceiver)
+  when is_function(Fn), is_integer(NumWorkers), NumWorkers > 0,
+       is_pid(FanInReceiver) ->
+    fanout(coop_flow:fanout(Fn, NumWorkers, FanInReceiver), NumWorkers).
+    
+fanout(CoopFlow, NumWorkers)
+  when is_integer(NumWorkers), NumWorkers > 0 ->
+    {inbound, _Fn} = digraph:vertex(CoopFlow, inbound),
+    {outbound, _FanInReceiver} = digraph:vertex(CoopFlow, outbound),
+    _Vertices = digraph:out_neighbours(CoopFlow, inbound).
+
+
+    

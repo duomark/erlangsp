@@ -2,18 +2,26 @@
 
 -include_lib("common_test/include/ct.hrl").
 
--export([all/0, init_per_suite/1, end_per_suite/1
-         %% init_per_testcase/2, end_per_testcase/2
-        ]).
--export([coop_flow_pipeline/1, coop_flow_pipeline_failure/1,
-         coop_flow_fanout/1,   coop_flow_fanout_failure/1,
-         coop/1]).
+%% Suite functions
+-export([all/0, init_per_suite/1, end_per_suite/1]).
+
+%% Pipeline and fanout tests
+-export([coop_flow_pipeline/1, coop_flow_pipeline_failure/1, coop_pipeline/1,
+         coop_flow_fanout/1,   coop_flow_fanout_failure/1]).
+
+%% Test procs for validating process message output
 -export([receive_pipe_results/0]).
  
-all() -> [coop_flow_pipeline, coop_flow_pipeline_failure,
-          coop_flow_fanout,   coop_flow_fanout_failure,
-          coop].
+all() -> [coop_flow_pipeline, coop_flow_pipeline_failure, coop_pipeline,
+          coop_flow_fanout,   coop_flow_fanout_failure].
 
+init_per_suite(Config) -> Config.
+end_per_suite(_Config) -> ok.
+
+
+%%----------------------------------------------------------------------
+%% Pipeline patterns
+%%----------------------------------------------------------------------
 example_pipeline_fn_pairs() ->
     %% Pipeline => 3 * (X+2) - 5
     F1 = fun(Num) when is_integer(Num) -> Num + 2 end,
@@ -21,18 +29,6 @@ example_pipeline_fn_pairs() ->
     F3 = fun(Num) when is_integer(Num) -> Num - 5 end,
     [{a, F1}, {b, F2}, {c, F3}].
 
-init_per_suite(Config) -> Config.
-end_per_suite(_Config) -> ok.
-
-%% init_per_group(pipeline, _Config) -> ok.
-%% end_per_group(Name, _Config) -> ok.
-
-%% init_per_testcase(_Any, _Config) -> ok.
-%% end_per_testcase(_Any, _Config) ->  ok.
-
-%%----------------------------------------------------------------------
-%% Pipeline patterns
-%%----------------------------------------------------------------------
 coop_flow_pipeline(_Config) ->
     PipeProps = example_pipeline_fn_pairs(),
     Pipeline = coop_flow:pipeline(PipeProps),
@@ -61,6 +57,37 @@ coop_flow_pipeline_failure(_Config) ->
 
     try coop_flow:pipeline([a])
     catch error:{case_clause, false} -> ok
+    end.
+
+
+coop_pipeline(_Config) ->
+    Pid = spawn_link(?MODULE, receive_pipe_results, []),
+    PipeProps = example_pipeline_fn_pairs(),
+    {FirstStage, _CoopFlow, Pipeline} = coop:pipeline(PipeProps, Pid),
+    PipeStats = digraph:info(Pipeline),
+    acyclic = proplists:get_value(cyclicity, PipeStats),
+    FirstStage ! 7,
+    timer:sleep(100),
+    ok = fetch_results(Pid).
+    
+
+fetch_results(Pid) ->
+    Pid ! {fetch, self()},
+    receive Any -> Any
+    after 3000 -> timeout_waiting
+    end.
+    
+receive_pipe_results() ->
+    receive
+        3 * (7+2) - 5 -> hold_results(ok);
+        Other ->  hold_results({fail, Other})
+    after 3000 -> hold_results(timeout)
+    end.
+
+hold_results(Results) ->
+    receive
+        {fetch, From} -> From ! Results
+    after 3000 -> timeout
     end.
 
 
@@ -105,35 +132,5 @@ coop_flow_fanout_failure(_Config) ->
     
     try coop_flow:fanout(fun(_Msg) -> ok end, 8, 3)
     catch error:function_clause -> ok
-    end.
-
-coop(_Config) ->
-    Pid = spawn_link(?MODULE, receive_pipe_results, []),
-    PipeProps = example_pipeline_fn_pairs(),
-    {FirstStage, Pipeline} = coop:pipeline(PipeProps, Pid),
-    PipeStats = digraph:info(Pipeline),
-    acyclic = proplists:get_value(cyclicity, PipeStats),
-    FirstStage ! 7,
-    timer:sleep(100),
-    ok = fetch_results(Pid).
-    
-
-fetch_results(Pid) ->
-    Pid ! {fetch, self()},
-    receive Any -> Any
-    after 3000 -> timeout_waiting
-    end.
-    
-receive_pipe_results() ->
-    receive
-        3 * (7+2) - 5 -> hold_results(ok);
-        Other ->  hold_results({fail, Other})
-    after 3000 -> hold_results(timeout)
-    end.
-
-hold_results(Results) ->
-    receive
-        {fetch, From} -> From ! Results
-    after 3000 -> timeout
     end.
 
