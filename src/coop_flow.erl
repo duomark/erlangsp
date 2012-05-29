@@ -18,6 +18,7 @@
 
 %%----------------------------------------------------------------------
 %% Pipeline patterns
+%%   pipeline flow is Graph<{Name, Fn}, ...>
 %%----------------------------------------------------------------------
 pipeline(NameFnPairs) when is_list(NameFnPairs) ->
     case length(NameFnPairs) > 1 of
@@ -36,6 +37,7 @@ chain_vertices(Graph, [H1,H2 | T]) ->
 
 %%----------------------------------------------------------------------
 %% Fanout patterns
+%%   fanout flow is Graph<{Name, Fn} => [... {Name, Fn} ...] => {Name, Fn}>
 %%----------------------------------------------------------------------
 fanout(Fn, NumWorkers, FanInReceiver)
   when is_function(Fn), is_integer(NumWorkers), NumWorkers > 0,
