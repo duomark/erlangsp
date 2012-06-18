@@ -1,6 +1,7 @@
 
--define(DAG_TOKEN,  '$DAG').
--define(DATA_TOKEN, '$DATA').
+-define(DAG_TOKEN,  '$$_DAG').
+-define(DATA_TOKEN, '$$_DATA').
+-define(CTL_TOKEN,  '$$_CTL').
 
 -define(DAG_MSG(__Graph, __Type),
         __Ref = make_ref(),
