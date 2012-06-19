@@ -38,4 +38,4 @@ test: all
 	make ct
 
 ct: 
-	@(cd ctest; ct_run -spec coop.spec -pa ../ebin)
+	@(cd ctest; ct_run -spec coop.spec -pa ../ebin -pa ../deps/*/ebin)

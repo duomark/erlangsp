@@ -45,7 +45,10 @@
 
 -include("coop_dag.hrl").
 
--type data_flow_method() :: round_robin | broadcast.
+-type single_data_flow_method() :: random | round_robin.
+-type multiple_data_flow_method() :: broadcast.
+-type data_flow_method() :: single_data_flow_method() | multiple_data_flow_method().
+
 -type task_function() :: {module(), atom()}.
 -type downstream_workers() :: queue().
 
@@ -82,6 +85,8 @@ link_to_kill_switch(Kill_Switch, Procs) when is_list(Procs) ->
 
 -spec new(pid(), task_function())
          -> {Ctl_Proc, Data_Proc} when Ctl_Proc :: pid(), Data_Proc :: pid().
+-spec new(pid(), task_function(), data_flow_method())
+         -> {Ctl_Proc, Data_Proc} when Ctl_Proc :: pid(), Data_Proc :: pid().
 -spec node_ctl_loop(pid(), pid(), task_function(), pid(), pid(), pid()) -> no_return().
 -spec node_ctl_loop(#coop_node{}) -> no_return().
 -spec node_data_loop(task_function(), downstream_workers(), data_flow_method()) -> no_return().
@@ -92,12 +97,14 @@ link_to_kill_switch(Kill_Switch, Procs) when is_list(Procs) ->
 %%----------------------------------------------------------------------
 new(Kill_Switch, Node_Fn) -> new(Kill_Switch, Node_Fn, round_robin).
 
-new(Kill_Switch, {_Task_Mod, _Task_Fn} = Node_Fn, Dist_Type)
+new(Kill_Switch, {_Task_Mod, _Task_Fn} = Node_Fn, Data_Flow_Method)
   when is_atom(_Task_Mod), is_atom(_Task_Fn),
-       (Dist_Type =:= round_robin orelse Dist_Type =:= broadcast) ->
+       (Data_Flow_Method =:= random orelse Data_Flow_Method =:= round_robin
+        orelse Data_Flow_Method =:= broadcast) ->
     
     %% Spawn support functions...
-    Task_Pid = proc_lib:spawn(?MODULE, node_data_loop, [Node_Fn, queue:new(), Dist_Type]),
+    Worker_Set = case Data_Flow_Method of random -> {}; _Other -> queue:new() end,
+    Task_Pid = proc_lib:spawn(?MODULE, node_data_loop, [Node_Fn, Worker_Set, Data_Flow_Method]),
     [Trace_Pid, Log_Pid, Reflect_Pid] =
         [proc_lib:spawn(?MODULE, link_loop, []) || _N <- lists:seq(1,3)],
 
@@ -149,33 +156,43 @@ node_clone(#coop_node{} = _Coop_Node) -> ok.
 %% Coop Node data is executed using Node_Fn and the results are
 %% passed to one or more of the downstream workers.
 %%----------------------------------------------------------------------
-node_data_loop(Node_Fn, Downstream_Pids, Node_Type) ->
+node_data_loop(Node_Fn, Downstream_Pids, Data_Flow_Method) ->
     receive
         {?DAG_TOKEN, ?CTL_TOKEN, {add_downstream, Pids}} when is_list(Pids) ->
-            New_Queue = queue:join(Downstream_Pids, queue:from_list(Pids)),
-            node_data_loop(Node_Fn, New_Queue, Node_Type);
+            New_Queue = case Data_Flow_Method of
+                            random -> list_to_tuple(tuple_to_list(Downstream_Pids) ++ Pids);
+                            _Other ->  queue:join(Downstream_Pids, queue:from_list(Pids))
+                        end,
+            node_data_loop(Node_Fn, New_Queue, Data_Flow_Method);
         {?DAG_TOKEN, ?CTL_TOKEN, {get_downstream, {Ref, From}}} ->
-            From ! {get_downstream, Ref, queue:to_list(Downstream_Pids)},
-            node_data_loop(Node_Fn, Downstream_Pids, Node_Type);
+            case Data_Flow_Method of
+                random ->
+                    From ! {get_downstream, Ref, tuple_to_list(Downstream_Pids)};
+                _Other ->
+                    From ! {get_downstream, Ref, queue:to_list(Downstream_Pids)}
+            end,
+            node_data_loop(Node_Fn, Downstream_Pids, Data_Flow_Method);
         {?DAG_TOKEN, ?CTL_TOKEN, _Unknown_Cmd} ->
-            node_data_loop(Node_Fn, Downstream_Pids, Node_Type);
+            node_data_loop(Node_Fn, Downstream_Pids, Data_Flow_Method);
         Data ->
-            New_Pids = relay_data(Data, Node_Fn, Downstream_Pids, Node_Type),
-            node_data_loop(Node_Fn, New_Pids, Node_Type)
+            New_Pids = relay_data(Data, Node_Fn, Downstream_Pids, Data_Flow_Method),
+            node_data_loop(Node_Fn, New_Pids, Data_Flow_Method)
     end.
 
 %% Relaying data requires a worker choice.
-relay_data(Data, {Module, Function} = _Node_Fn, Worker_Set, round_robin) ->
-    {Worker, New_Worker_Set} = choose_worker(Worker_Set, round_robin),
-    Result = Module:Function(Data),
-%%    error_logger:error_msg("Sending result of ~p to ~p~n", [Result, Worker]),
-    Worker ! Result,
-    New_Worker_Set;
 relay_data(Data, {Module, Function} = _Node_Fn, Worker_Set, broadcast) ->
     Fn_Result = Module:Function(Data),
     [Worker ! Fn_Result || Worker <- queue:to_list(Worker_Set)],
-    Worker_Set.
+    Worker_Set;
+relay_data(Data, {Module, Function} = _Node_Fn, Worker_Set, Single_Data_Flow_Method) ->
+    {Worker, New_Worker_Set} = choose_worker(Worker_Set, Single_Data_Flow_Method),
+    Fn_Result = Module:Function(Data),
+    Worker ! Fn_Result,
+    New_Worker_Set.
 
+choose_worker(Worker_Set, random) ->
+    N = coop_node_util:random_worker(Worker_Set),
+    {element(N, Worker_Set), Worker_Set};
 choose_worker(Worker_Set, round_robin) ->
     {{value, Worker}, Set_Minus_Worker} = queue:out(Worker_Set),
     {Worker, queue:in(Worker, Set_Minus_Worker)}.

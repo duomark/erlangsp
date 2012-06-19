@@ -10,7 +10,7 @@
          node_ctl_kill_one_proc/1, node_ctl_kill_two_proc/1,
          node_ctl_stop_one_proc/1,
          task_compute_one/1, task_compute_three_round_robin/1,
-         task_compute_three_broadcast/1
+         task_compute_three_broadcast/1, task_compute_random/1
         ]). 
 
 %% Spawned functions
@@ -20,7 +20,7 @@ all() -> [
           node_ctl_kill_one_proc, node_ctl_kill_two_proc,
           node_ctl_stop_one_proc,
           task_compute_one, task_compute_three_round_robin,
-          task_compute_three_broadcast
+          task_compute_three_broadcast, task_compute_random
          ].
 
 init_per_suite(Config) -> Config.
@@ -166,3 +166,38 @@ task_compute_three_broadcast(_Config) ->
     ?TM:node_task_deliver_data(Node_Task_Pid, 6),
     timer:sleep(50),
     [18, 18, 18] = [get_result_data(Pid) || Pid <- Receivers].
+
+task_compute_random(_Config) ->
+    Args = [_Kill_Switch, _Node_Fn, _Dist_Type] = create_new_coop_node_args(random),
+    {_Node_Ctl_Pid, Node_Task_Pid} = apply(?TM, new, Args),
+    [] = ?TM:node_task_get_downstream_pids(Node_Task_Pid),
+
+    Receivers = [proc_lib:spawn_link(?MODULE, report_result, [[]])
+                 || _N <- lists:seq(1,5)],
+    ?TM:node_task_add_downstream_pids(Node_Task_Pid, Receivers),
+    Receivers = ?TM:node_task_get_downstream_pids(Node_Task_Pid),
+    [true = is_process_alive(Pid) || Pid <- Receivers],
+
+    Ets_Name = crypto_rand_test,
+    Key = crypto_rand_stub,
+    ets:new(Ets_Name, [named_table, public]),
+    ets:insert(Ets_Name, {Key, [4,2,3,1,5]}),
+    meck:new(coop_node_util),
+    meck:expect(coop_node_util, random_worker, fun(_Tuple) -> [{Key, [H|T]}] = ets:lookup(Ets_Name, Key), ets:insert(Ets_Name, {Key, T}), H end),
+    ?TM:node_task_deliver_data(Node_Task_Pid, 3),
+    timer:sleep(50),
+    [none, none, none, 9, none] = [get_result_data(Pid) || Pid <- Receivers],
+    ?TM:node_task_deliver_data(Node_Task_Pid, 4),
+    timer:sleep(50),
+    [none, 12, none, none, none] = [get_result_data(Pid) || Pid <- Receivers],
+    ?TM:node_task_deliver_data(Node_Task_Pid, 5),
+    timer:sleep(50),
+    [none, none, 15, none, none] = [get_result_data(Pid) || Pid <- Receivers],
+    ?TM:node_task_deliver_data(Node_Task_Pid, 6),
+    timer:sleep(50),
+    [18, none, none, none, none] = [get_result_data(Pid) || Pid <- Receivers],
+    ?TM:node_task_deliver_data(Node_Task_Pid, 7),
+    timer:sleep(50),
+    [none, none, none, none, 21] = [get_result_data(Pid) || Pid <- Receivers],
+    meck:unload(coop_node_util),
+    ets:delete(Ets_Name).
