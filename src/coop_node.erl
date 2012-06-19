@@ -14,7 +14,7 @@
 
 %% Graph API
 -export([
-         new/2, node_ctl_clone/1, node_ctl_stop/1,
+         new/2, new/3, node_ctl_clone/1, node_ctl_stop/1,
          node_task_get_downstream_pids/1,
          node_task_add_downstream_pids/2,
          node_task_deliver_data/2
@@ -90,11 +90,14 @@ link_to_kill_switch(Kill_Switch, Procs) when is_list(Procs) ->
 %% Create a new coop_node. A coop_node is represented by a pair of
 %% pids: a control process and a data task process.
 %%----------------------------------------------------------------------
-new(Kill_Switch, {_Task_Mod, _Task_Fn} = Node_Fn)
-  when is_atom(_Task_Mod), is_atom(_Task_Fn) ->
+new(Kill_Switch, Node_Fn) -> new(Kill_Switch, Node_Fn, round_robin).
+
+new(Kill_Switch, {_Task_Mod, _Task_Fn} = Node_Fn, Dist_Type)
+  when is_atom(_Task_Mod), is_atom(_Task_Fn),
+       (Dist_Type =:= round_robin orelse Dist_Type =:= broadcast) ->
     
     %% Spawn support functions...
-    Task_Pid = proc_lib:spawn(?MODULE, node_data_loop, [Node_Fn, queue:new(), round_robin]),
+    Task_Pid = proc_lib:spawn(?MODULE, node_data_loop, [Node_Fn, queue:new(), Dist_Type]),
     [Trace_Pid, Log_Pid, Reflect_Pid] =
         [proc_lib:spawn(?MODULE, link_loop, []) || _N <- lists:seq(1,3)],
 
@@ -164,7 +167,9 @@ node_data_loop(Node_Fn, Downstream_Pids, Node_Type) ->
 %% Relaying data requires a worker choice.
 relay_data(Data, {Module, Function} = _Node_Fn, Worker_Set, round_robin) ->
     {Worker, New_Worker_Set} = choose_worker(Worker_Set, round_robin),
-    Worker ! Module:Function(Data),
+    Result = Module:Function(Data),
+%%    error_logger:error_msg("Sending result of ~p to ~p~n", [Result, Worker]),
+    Worker ! Result,
     New_Worker_Set;
 relay_data(Data, {Module, Function} = _Node_Fn, Worker_Set, broadcast) ->
     Fn_Result = Module:Function(Data),
