@@ -1,6 +1,6 @@
 REBAR=./rebar
 ALL_APPS_DIRS=apps/*
-CT_LOG_DIRS=apps/ctest/*/logs
+CT_LOG_DIRS=apps/ctest/logs
 
 all: deps compile
 
