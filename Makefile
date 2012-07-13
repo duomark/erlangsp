@@ -1,12 +1,16 @@
+REBAR=./rebar
+ALL_APPS_DIRS=apps/*
+CT_LOG_DIRS=apps/ctest/*/logs
+
 all: deps compile
 
 deps: deps/erlangsp
 
 deps/erlangsp:
-	@./rebar get-deps
+	@${REBAR} get-deps
 
 compile:
-	@./rebar compile
+	@${REBAR} compile
 
 dialyze: all
 	@dialyzer -Wrace_conditions ebin
@@ -14,15 +18,21 @@ dialyze: all
 gc: crash
 	@echo 'Removing all emacs backup files'
 	@find . -name "*~" -exec rm -f {} \;
-	@rm -f src/*.P
-	@rm -f src/*.beam
+	@find . -name "erl_crash.dump" -exec rm -f {} \;
+	@rm -f ${ALL_APPS_DIRS}/src/*.P
+	@rm -f ${ALL_APPS_DIRS}/src/*/*.P
+	@rm -f ${ALL_APPS_DIRS}/src/*.beam
+	@rm -f ${ALL_APPS_DIRS}/src/*/*.beam
+	@echo 'Removing all common_test logs'
+	@rm -rf ${CT_LOG_DIRS}/*.*
+	@rm -f ${CT_LOG_DIRS}/variables-ct*
 
 rel: all
 	@echo 'Generating erlangsp release'
-	@(cd rel; ../rebar generate)
+	@(cd rel; .${REBAR} generate)
 
 clean: gc
-	@./rebar clean
+	@${REBAR} clean
 
 crash:
 	@find . -name "erl_crash.dump" -exec rm -f {} \;
@@ -31,11 +41,11 @@ relclean: crash
 	@rm -rf rel/erlangsp
 
 realclean: clean relclean
-	@./rebar del-deps
+	@${REBAR} del-deps
 	@rm -rf deps/*
 
 test: all
 	make ct
 
 ct: 
-	@(cd ctest; ct_run -spec coop.spec -pa ../ebin -pa ../deps/*/ebin)
+	@(cd apps/ctest; ct_run -spec coop.spec -pa ../coop/ebin -pa ../../deps/*/ebin)

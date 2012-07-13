@@ -1,4 +1,4 @@
-ctest/logs/*
+apps/ctest/logs/*
 .eunit
 *.beam
 deps
