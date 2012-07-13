@@ -1,8 +1,8 @@
-{application, erlangsp,
+{application, coop,
  [
-  {id,  "Erlang/SP"},
+  {id,  "Co-op"},
   {vsn, "0.0.1"},
-  {description, "Erlang Services Platform Library"},
+  {description, "Erlang Co-op Library"},
   {modules, []},
   {registered, []},
   {applications, [kernel, stdlib, sasl, gs, appmon]},
