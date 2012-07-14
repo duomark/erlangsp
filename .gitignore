@@ -1,4 +1,5 @@
-apps/ctest/logs/*
+apps/ctest/logs
+rel/erlangsp
 .eunit
 *.beam
 deps
