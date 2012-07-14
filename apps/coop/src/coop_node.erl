@@ -157,10 +157,16 @@ node_clone(#coop_node{} = _Coop_Node) -> ok.
 %%----------------------------------------------------------------------
 node_data_loop(Node_Fn, Downstream_Pids, Data_Flow_Method) ->
     receive
+        {?DAG_TOKEN, ?CTL_TOKEN, {add_downstream, []}} ->
+            node_data_loop(Node_Fn, Downstream_Pids, Data_Flow_Method);
         {?DAG_TOKEN, ?CTL_TOKEN, {add_downstream, Pids}} when is_list(Pids) ->
             New_Queue = case Data_Flow_Method of
                             random -> list_to_tuple(tuple_to_list(Downstream_Pids) ++ Pids);
                             _Other -> case Downstream_Pids of
+                                          {}     -> case Pids of
+                                                        [Pid] -> {Pid};
+                                                        _More -> queue:from_list(Pids)
+                                                    end;
                                           {Pid}  -> queue:from_list([Pid | Pids]);
                                           _Queue -> Q = queue:from_list(Pids),
                                                     queue:join(Downstream_Pids, Q)
@@ -168,10 +174,10 @@ node_data_loop(Node_Fn, Downstream_Pids, Data_Flow_Method) ->
                         end,
             node_data_loop(Node_Fn, New_Queue, Data_Flow_Method);
         {?DAG_TOKEN, ?CTL_TOKEN, {get_downstream, {Ref, From}}} ->
-            case Data_Flow_Method of
-                random ->
+            case Downstream_Pids of
+                Downstream_Pids when is_tuple(Downstream_Pids) ->
                     From ! {get_downstream, Ref, tuple_to_list(Downstream_Pids)};
-                _Other ->
+                _Downstream_Pids_Is_A_Queue ->
                     From ! {get_downstream, Ref, queue:to_list(Downstream_Pids)}
             end,
             node_data_loop(Node_Fn, Downstream_Pids, Data_Flow_Method);
