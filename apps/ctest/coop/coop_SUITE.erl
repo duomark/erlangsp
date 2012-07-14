@@ -1,5 +1,6 @@
 -module(coop_SUITE).
 
+-include_lib("../../erlangsp/include/license_and_copyright.hrl").
 -include_lib("common_test/include/ct.hrl").
 
 %% Suite functions
