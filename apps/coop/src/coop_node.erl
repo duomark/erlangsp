@@ -157,36 +157,68 @@ node_clone(#coop_node{} = _Coop_Node) -> ok.
 %%----------------------------------------------------------------------
 node_data_loop(Node_Fn, Downstream_Pids, Data_Flow_Method) ->
     receive
+
+        %%------------------------------------------------------
+        %% CONTROL COMMANDS
+
+        %% Add more downstream processes to the known set...
         {?DAG_TOKEN, ?CTL_TOKEN, {add_downstream, []}} ->
             node_data_loop(Node_Fn, Downstream_Pids, Data_Flow_Method);
-        {?DAG_TOKEN, ?CTL_TOKEN, {add_downstream, Pids}} when is_list(Pids) ->
-            New_Queue = case Data_Flow_Method of
-                            random -> list_to_tuple(tuple_to_list(Downstream_Pids) ++ Pids);
-                            _Other -> case Downstream_Pids of
-                                          {}     -> case Pids of
-                                                        [Pid] -> {Pid};
-                                                        _More -> queue:from_list(Pids)
-                                                    end;
-                                          {Pid}  -> queue:from_list([Pid | Pids]);
-                                          _Queue -> Q = queue:from_list(Pids),
-                                                    queue:join(Downstream_Pids, Q)
-                                      end
-                        end,
+        {?DAG_TOKEN, ?CTL_TOKEN, {add_downstream, New_Pids}} when is_list(New_Pids) ->
+            New_Queue = do_add_downstream(Data_Flow_Method, Downstream_Pids, New_Pids),
             node_data_loop(Node_Fn, New_Queue, Data_Flow_Method);
+
+        %% Report all known downstream processes...
         {?DAG_TOKEN, ?CTL_TOKEN, {get_downstream, {Ref, From}}} ->
-            case Downstream_Pids of
-                Downstream_Pids when is_tuple(Downstream_Pids) ->
-                    From ! {get_downstream, Ref, tuple_to_list(Downstream_Pids)};
-                _Downstream_Pids_Is_A_Queue ->
-                    From ! {get_downstream, Ref, queue:to_list(Downstream_Pids)}
-            end,
+            reply_downstream_pids_as_list(Data_Flow_Method, Downstream_Pids, Ref, From),
             node_data_loop(Node_Fn, Downstream_Pids, Data_Flow_Method);
+
+        %% Skip unknown DAG messages to avoid message queue blow up...
         {?DAG_TOKEN, ?CTL_TOKEN, _Unknown_Cmd} ->
+            error_logger:info_msg("Unknown DAG Cmd: ~p~n", [_Unknown_Cmd]),
             node_data_loop(Node_Fn, Downstream_Pids, Data_Flow_Method);
+        %%------------------------------------------------------
+
+
+        %%------------------------------------------------------
+        %% OTP SYSTEM MESSAGES
+
+        %% Handle system messages (sys module originates)...
+        {system, From, Msg} ->
+            error_logger:info_msg("Sys: ~p ~p~n", [From, Msg]),
+            %% sys:handle_system_msg(),
+            node_data_loop(Node_Fn, Downstream_Pids, Data_Flow_Method);
+        %%------------------------------------------------------
+
+
+        %%------------------------------------------------------
+        %% DATA COMMANDS
+
+        %% Process normal data flow.
         Data ->
             Maybe_Reordered_Pids = relay_data(Data, Node_Fn, Downstream_Pids, Data_Flow_Method),
             node_data_loop(Node_Fn, Maybe_Reordered_Pids, Data_Flow_Method)
+        %%------------------------------------------------------
     end.
+
+do_add_downstream(random, Downstream_Pids, New_Pids) ->
+    list_to_tuple(tuple_to_list(Downstream_Pids) ++ New_Pids);
+
+do_add_downstream(_Not_Random, {},     [Pid])    -> {Pid};
+do_add_downstream(_Not_Random, {},     New_Pids) -> queue:from_list(New_Pids);
+do_add_downstream(_Not_Random, {Pid},  New_Pids) -> queue:from_list([Pid | New_Pids]);
+do_add_downstream(_Not_Random, Downstream_Pids, New_Pids) ->
+    queue:join(Downstream_Pids, queue:from_list(New_Pids)).
+
+reply_downstream_pids_as_list(random, Downstream_Pids, Ref, From) ->
+    From ! {get_downstream, Ref, tuple_to_list(Downstream_Pids)};
+reply_downstream_pids_as_list(_Not_Random, Downstream_Pids, Ref, From) ->
+    case Downstream_Pids of
+        {}    -> From ! {get_downstream, Ref, []};
+        {Pid} -> From ! {get_downstream, Ref, [Pid]};
+        Queue -> From ! {get_downstream, Ref, queue:to_list(Queue)}
+    end.
+
 
 %% Relay data to all Downstream_Pids...
 relay_data(Data, {Module, Function} = _Node_Fn, Worker_Set, broadcast) ->
