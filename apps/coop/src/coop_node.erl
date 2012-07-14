@@ -160,7 +160,11 @@ node_data_loop(Node_Fn, Downstream_Pids, Data_Flow_Method) ->
         {?DAG_TOKEN, ?CTL_TOKEN, {add_downstream, Pids}} when is_list(Pids) ->
             New_Queue = case Data_Flow_Method of
                             random -> list_to_tuple(tuple_to_list(Downstream_Pids) ++ Pids);
-                            _Other ->  queue:join(Downstream_Pids, queue:from_list(Pids))
+                            _Other -> case Downstream_Pids of
+                                          {Pid}  -> queue:from_list([Pid | Pids]);
+                                          _Queue -> Q = queue:from_list(Pids),
+                                                    queue:join(Downstream_Pids, Q)
+                                      end
                         end,
             node_data_loop(Node_Fn, New_Queue, Data_Flow_Method);
         {?DAG_TOKEN, ?CTL_TOKEN, {get_downstream, {Ref, From}}} ->
@@ -178,20 +182,28 @@ node_data_loop(Node_Fn, Downstream_Pids, Data_Flow_Method) ->
             node_data_loop(Node_Fn, Maybe_Reordered_Pids, Data_Flow_Method)
     end.
 
-%% Relaying data requires a worker choice.
+%% Relay data to all Downstream_Pids...
 relay_data(Data, {Module, Function} = _Node_Fn, Worker_Set, broadcast) ->
     Fn_Result = Module:Function(Data),
     [Worker ! Fn_Result || Worker <- queue:to_list(Worker_Set)],
     Worker_Set;
+%% Faster routing if only one Downstream_Pid...
+relay_data(Data, {Module, Function} = _Node_Fn, {Pid} = Worker_Set, _Single_Data_Flow_Method) ->
+    Fn_Result = Module:Function(Data),
+    Pid ! Fn_Result,
+    Worker_Set;
+%% Relay data with random or round_robin has to choose a single destination.
 relay_data(Data, {Module, Function} = _Node_Fn, Worker_Set, Single_Data_Flow_Method) ->
     {Worker, New_Worker_Set} = choose_worker(Worker_Set, Single_Data_Flow_Method),
     Fn_Result = Module:Function(Data),
     Worker ! Fn_Result,
     New_Worker_Set.
 
+%% Choose a worker randomly without changing the Worker_Set...
 choose_worker(Worker_Set, random) ->
     N = coop_node_util:random_worker(Worker_Set),
     {element(N, Worker_Set), Worker_Set};
+%% Grab first worker, then rotate worker list for round_robin.
 choose_worker(Worker_Set, round_robin) ->
     {{value, Worker}, Set_Minus_Worker} = queue:out(Worker_Set),
     {Worker, queue:in(Worker, Set_Minus_Worker)}.
