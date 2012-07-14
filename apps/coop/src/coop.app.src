@@ -7,6 +7,5 @@
   {registered, []},
   {applications, [kernel, stdlib, sasl, gs, appmon]},
   {included_applications, []},
-  {mod, {}},
   {env, []}
 ]}.
