@@ -8,8 +8,7 @@
 %%%------------------------------------------------------------------------------
 -module(coop_node).
 
--license("New BSD").
--copyright("(c) 2012, DuoMark International, Inc.  All rights reserved").
+-include("../erlangsp/include/license_and_copyright.hrl").
 -author(jayn).
 
 %% Graph API
@@ -150,8 +149,8 @@ node_ctl_loop(#coop_node{} = Coop_Node) ->
     end.
 
 node_clone(#coop_node{} = _Coop_Node) -> ok.
-    
-    
+
+
 %%----------------------------------------------------------------------
 %% Coop Node data is executed using Node_Fn and the results are
 %% passed to one or more of the downstream workers.
@@ -175,8 +174,8 @@ node_data_loop(Node_Fn, Downstream_Pids, Data_Flow_Method) ->
         {?DAG_TOKEN, ?CTL_TOKEN, _Unknown_Cmd} ->
             node_data_loop(Node_Fn, Downstream_Pids, Data_Flow_Method);
         Data ->
-            New_Pids = relay_data(Data, Node_Fn, Downstream_Pids, Data_Flow_Method),
-            node_data_loop(Node_Fn, New_Pids, Data_Flow_Method)
+            Maybe_Reordered_Pids = relay_data(Data, Node_Fn, Downstream_Pids, Data_Flow_Method),
+            node_data_loop(Node_Fn, Maybe_Reordered_Pids, Data_Flow_Method)
     end.
 
 %% Relaying data requires a worker choice.

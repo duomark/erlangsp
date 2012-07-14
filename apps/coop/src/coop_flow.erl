@@ -8,8 +8,7 @@
 %%%------------------------------------------------------------------------------
 -module(coop_flow).
 
--license("New BSD").
--copyright("(c) 2012, DuoMark International, Inc.  All rights reserved").
+-include("../erlangsp/include/license_and_copyright.hrl").
 -author(jayn).
 
 %% Friendly API
