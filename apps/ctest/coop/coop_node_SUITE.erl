@@ -172,6 +172,7 @@ task_compute_random(_Config) ->
     Args = [_Kill_Switch, _Node_Fn, _Dist_Type] = create_new_coop_node_args(random),
     {_Node_Ctl_Pid, Node_Task_Pid} = apply(?TM, new, Args),
     [] = ?TM:node_task_get_downstream_pids(Node_Task_Pid),
+    error_logger:info_msg("Status: ~p~n", [sys:get_status(Node_Task_Pid)]),
 
     Receivers = [proc_lib:spawn_link(?MODULE, report_result, [[]])
                  || _N <- lists:seq(1,5)],

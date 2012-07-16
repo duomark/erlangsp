@@ -25,6 +25,9 @@
          node_ctl_loop/6, node_data_loop/3
         ]).
 
+%% System message API functions
+-export([system_continue/3, system_terminate/4, system_code_change/4]).
+
 %% Temporary compiler warning fix
 -export([receive_reply/1]).
 
@@ -157,49 +160,45 @@ node_clone(#coop_node{} = _Coop_Node) -> ok.
 %%----------------------------------------------------------------------
 node_data_loop(Node_Fn, Downstream_Pids, Data_Flow_Method) ->
     receive
-
-        %%------------------------------------------------------
-        %% CONTROL COMMANDS
-
-        %% Add more downstream processes to the known set...
-        {?DAG_TOKEN, ?CTL_TOKEN, {add_downstream, []}} ->
-            node_data_loop(Node_Fn, Downstream_Pids, Data_Flow_Method);
-        {?DAG_TOKEN, ?CTL_TOKEN, {add_downstream, New_Pids}} when is_list(New_Pids) ->
-            New_Queue = do_add_downstream(Data_Flow_Method, Downstream_Pids, New_Pids),
+        {system, From, System_Msg} ->
+            handle_sys({Node_Fn, Downstream_Pids, Data_Flow_Method}, From, System_Msg);
+        {?DAG_TOKEN, ?CTL_TOKEN, Dag_Ctl_Msg} ->
+            New_Queue = handle_ctl(Downstream_Pids, Data_Flow_Method, Dag_Ctl_Msg),
             node_data_loop(Node_Fn, New_Queue, Data_Flow_Method);
-
-        %% Report all known downstream processes...
-        {?DAG_TOKEN, ?CTL_TOKEN, {get_downstream, {Ref, From}}} ->
-            reply_downstream_pids_as_list(Data_Flow_Method, Downstream_Pids, Ref, From),
-            node_data_loop(Node_Fn, Downstream_Pids, Data_Flow_Method);
-
-        %% Skip unknown DAG messages to avoid message queue blow up...
-        {?DAG_TOKEN, ?CTL_TOKEN, _Unknown_Cmd} ->
-            error_logger:info_msg("Unknown DAG Cmd: ~p~n", [_Unknown_Cmd]),
-            node_data_loop(Node_Fn, Downstream_Pids, Data_Flow_Method);
-        %%------------------------------------------------------
-
-
-        %%------------------------------------------------------
-        %% OTP SYSTEM MESSAGES
-
-        %% Handle system messages (sys module originates)...
-        {system, From, Msg} ->
-            error_logger:info_msg("Sys: ~p ~p~n", [From, Msg]),
-            %% sys:handle_system_msg(),
-            node_data_loop(Node_Fn, Downstream_Pids, Data_Flow_Method);
-        %%------------------------------------------------------
-
-
-        %%------------------------------------------------------
-        %% DATA COMMANDS
-
-        %% Process normal data flow.
         Data ->
             Maybe_Reordered_Pids = relay_data(Data, Node_Fn, Downstream_Pids, Data_Flow_Method),
             node_data_loop(Node_Fn, Maybe_Reordered_Pids, Data_Flow_Method)
-        %%------------------------------------------------------
     end.
+
+
+%% System message handling...
+handle_sys({_Node_Fn, _Downstream_Pids, _Data_Flow_Method} = Misc, From, System_Msg) ->
+    error_logger:info_msg("Sys: ~p ~p~n", [From, System_Msg]),
+    error_logger:info_msg("Misc: ~p~n", [Misc]),
+    [Parent | _] = get('$ancestors'),
+    sys:handle_system_msg(System_Msg, From, Parent, ?MODULE, [], Misc).
+
+system_continue(_Parent, _Debug, {Node_Fn, Downstream_Pids, Data_Flow_Method} = _Misc) ->
+    error_logger:info_msg("Continuing with: ~p~n", [_Misc]),
+    node_data_loop(Node_Fn, Downstream_Pids, Data_Flow_Method).
+
+system_terminate(Reason, _Parent, _Debug, _Misc) -> exit(Reason).
+
+system_code_change(Misc, _Module, _OldVsn, _Extra) -> {ok, Misc}.
+
+
+%% Control message requests...            
+handle_ctl(Downstream_Pids, _Data_Flow_Method, {add_downstream, []}) ->
+    Downstream_Pids;
+handle_ctl(Downstream_Pids,  Data_Flow_Method, {add_downstream, New_Pids})
+  when is_list(New_Pids) ->
+    do_add_downstream(Data_Flow_Method, Downstream_Pids, New_Pids);
+handle_ctl(Downstream_Pids,  Data_Flow_Method, {get_downstream, {Ref, From}}) ->
+    reply_downstream_pids_as_list(Data_Flow_Method, Downstream_Pids, Ref, From),
+    Downstream_Pids;
+handle_ctl(Downstream_Pids, _Data_Flow_Method, _Unknown_Cmd) ->
+    error_logger:info_msg("Unknown DAG Cmd: ~p~n", [_Unknown_Cmd]),
+    Downstream_Pids.
 
 do_add_downstream(random, Downstream_Pids, New_Pids) ->
     list_to_tuple(tuple_to_list(Downstream_Pids) ++ New_Pids);
