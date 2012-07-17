@@ -26,7 +26,10 @@
         ]).
 
 %% System message API functions
--export([system_continue/3, system_terminate/4, system_code_change/4]).
+-export([
+         system_continue/3, system_terminate/4, system_code_change/4,
+         format_status/2
+        ]).
 
 %% Temporary compiler warning fix
 -export([receive_reply/1]).
@@ -163,8 +166,8 @@ node_data_loop(Node_Fn, Downstream_Pids, Data_Flow_Method) ->
         {system, From, System_Msg} ->
             handle_sys({Node_Fn, Downstream_Pids, Data_Flow_Method}, From, System_Msg);
         {?DAG_TOKEN, ?CTL_TOKEN, Dag_Ctl_Msg} ->
-            New_Queue = handle_ctl(Downstream_Pids, Data_Flow_Method, Dag_Ctl_Msg),
-            node_data_loop(Node_Fn, New_Queue, Data_Flow_Method);
+            New_Downstream_Pids = handle_ctl(Downstream_Pids, Data_Flow_Method, Dag_Ctl_Msg),
+            node_data_loop(Node_Fn, New_Downstream_Pids, Data_Flow_Method);
         Data ->
             Maybe_Reordered_Pids = relay_data(Data, Node_Fn, Downstream_Pids, Data_Flow_Method),
             node_data_loop(Node_Fn, Maybe_Reordered_Pids, Data_Flow_Method)
@@ -172,19 +175,40 @@ node_data_loop(Node_Fn, Downstream_Pids, Data_Flow_Method) ->
 
 
 %% System message handling...
-handle_sys({_Node_Fn, _Downstream_Pids, _Data_Flow_Method} = Misc, From, System_Msg) ->
-    error_logger:info_msg("Sys: ~p ~p~n", [From, System_Msg]),
-    error_logger:info_msg("Misc: ~p~n", [Misc]),
+handle_sys(Coop_Internals, From, System_Msg) ->
+    %% Use proc_lib process dictionary to get parent
     [Parent | _] = get('$ancestors'),
-    sys:handle_system_msg(System_Msg, From, Parent, ?MODULE, [], Misc).
+    sys:handle_system_msg(System_Msg, From, Parent, ?MODULE, [], Coop_Internals).
 
 system_continue(_Parent, _Debug, {Node_Fn, Downstream_Pids, Data_Flow_Method} = _Misc) ->
-    error_logger:info_msg("Continuing with: ~p~n", [_Misc]),
     node_data_loop(Node_Fn, Downstream_Pids, Data_Flow_Method).
 
 system_terminate(Reason, _Parent, _Debug, _Misc) -> exit(Reason).
-
 system_code_change(Misc, _Module, _OldVsn, _Extra) -> {ok, Misc}.
+
+format_status(normal, [_PDict, SysState, Parent, Debug,
+                       {Node_Fn, Downstream_Pids, Data_Flow_Method}]) ->
+    Pid_Count = case Data_Flow_Method of
+                    random -> tuple_size(Downstream_Pids);
+                    _Not_Random ->
+                        case Downstream_Pids of
+                            {}    -> 0;
+                            {_Pid} -> 1;
+                            Queue -> queue:len(Queue)
+                        end
+                end,
+    Hdr = "Status for coop_node",
+    Log = sys:get_debug(log, Debug, []),
+    [{header, Hdr},
+     {data, [{"Status",               SysState},
+             {"Node_Fn",              Node_Fn},
+             {"Downstream_Pid_Count", Pid_Count},
+             {"Data_Flow_Method",     Data_Flow_Method},
+             {"Parent",               Parent},
+             {"Logged events",        Log}]
+     }];
+
+format_status(terminate, StatusData) -> [terminate, StatusData].
 
 
 %% Control message requests...            

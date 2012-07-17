@@ -4,28 +4,50 @@
 -include_lib("common_test/include/ct.hrl").
 
 %% Suite functions
--export([all/0, init_per_suite/1, end_per_suite/1]).
+-export([
+         all/0, groups/0,
+         init_per_suite/1, end_per_suite/1,
+         init_per_group/2, end_per_group/2
+        ]).
 
 %% Control process loop.
 -export([
          node_ctl_kill_one_proc/1, node_ctl_kill_two_proc/1,
          node_ctl_stop_one_proc/1,
+
          task_compute_one/1, task_compute_three_round_robin/1,
-         task_compute_three_broadcast/1, task_compute_random/1
+         task_compute_three_broadcast/1, task_compute_random/1,
+
+         sys_suspend/1, sys_format/1
         ]). 
 
 %% Spawned functions
 -export([x3/1, report_result/1]).
  
-all() -> [
-          node_ctl_kill_one_proc, node_ctl_kill_two_proc,
-          node_ctl_stop_one_proc,
-          task_compute_one, task_compute_three_round_robin,
-          task_compute_three_broadcast, task_compute_random
-         ].
+groups() -> [{ctl_tests, [sequence],
+              [
+               {kill, [sequence], [node_ctl_kill_one_proc, node_ctl_kill_two_proc]},
+               {stop, [sequence], [node_ctl_stop_one_proc]}
+              ]},
+             {data_tests, [sequence],
+              [
+               {compute, [sequence], [task_compute_one, task_compute_three_round_robin,
+                                      task_compute_three_broadcast, task_compute_random]}
+              ]},
+             {sys_tests, [sequence],
+              [
+               {suspend, [sequence], [sys_suspend]},
+               {format,  [sequence], [sys_format]}
+              ]}
+            ].
+ 
+all() -> [{group, ctl_tests}, {group, data_tests}, {group, sys_tests}].
 
 init_per_suite(Config) -> Config.
 end_per_suite(_Config) -> ok.
+
+init_per_group(_Group, Config) -> Config.
+end_per_group(_Group, _Config) -> ok.
 
 %% Test module
 -define(TM, coop_node).
@@ -172,7 +194,6 @@ task_compute_random(_Config) ->
     Args = [_Kill_Switch, _Node_Fn, _Dist_Type] = create_new_coop_node_args(random),
     {_Node_Ctl_Pid, Node_Task_Pid} = apply(?TM, new, Args),
     [] = ?TM:node_task_get_downstream_pids(Node_Task_Pid),
-    error_logger:info_msg("Status: ~p~n", [sys:get_status(Node_Task_Pid)]),
 
     Receivers = [proc_lib:spawn_link(?MODULE, report_result, [[]])
                  || _N <- lists:seq(1,5)],
@@ -203,3 +224,54 @@ task_compute_random(_Config) ->
     [none, none, none, none, 21] = [get_result_data(Pid) || Pid <- Receivers],
     meck:unload(coop_node_util),
     ets:delete(Ets_Name).
+
+sys_suspend(_Config) ->
+    Args = [_Kill_Switch, _Node_Fn, _Dist_Type] = create_new_coop_node_args(random),
+    {_Node_Ctl_Pid, Node_Task_Pid} = apply(?TM, new, Args),
+    [] = ?TM:node_task_get_downstream_pids(Node_Task_Pid),
+    
+    Receiver = [self()],
+    ?TM:node_task_add_downstream_pids(Node_Task_Pid, Receiver),
+    Receiver = ?TM:node_task_get_downstream_pids(Node_Task_Pid),
+
+    %% Verify it computes normally...
+    ?TM:node_task_deliver_data(Node_Task_Pid, 5),
+    15 = receive Data1 -> Data1 end,
+    
+    %% Suspend message handling and get no result...
+    sys:suspend(Node_Task_Pid),
+    ?TM:node_task_deliver_data(Node_Task_Pid, 5),
+    0 = receive Data2 -> Data2 after 100 -> 0 end,
+    true = is_process_alive(Node_Task_Pid),
+
+    %% Resume and result appears.
+    sys:resume(Node_Task_Pid),
+    15 = receive Data3 -> Data3 after 100 -> 0 end.
+
+sys_format(_Config) ->
+    Args = [_Kill_Switch, _Node_Fn, _Dist_Type] = create_new_coop_node_args(random),
+    {_Node_Ctl_Pid, Node_Task_Pid} = apply(?TM, new, Args),
+    [] = ?TM:node_task_get_downstream_pids(Node_Task_Pid),
+
+    %% Get the custom status information...
+    Custom_Running_Fmt = get_custom_fmt(sys:get_status(Node_Task_Pid)),
+    "Status for coop_node" = proplists:get_value(header, Custom_Running_Fmt),
+    Custom_Running_Props = proplists:get_value(data, Custom_Running_Fmt),
+    running = proplists:get_value("Status", Custom_Running_Props),
+    {coop_node_SUITE,x3} = proplists:get_value("Node_Fn", Custom_Running_Props),
+    0 = proplists:get_value("Downstream_Pid_Count", Custom_Running_Props),
+    random = proplists:get_value("Data_Flow_Method", Custom_Running_Props),
+
+    [A,B,C] = [proc_lib:spawn_link(?MODULE, report_result, [[]]) || _N <- lists:seq(1,3)],
+    ?TM:node_task_add_downstream_pids(Node_Task_Pid, [A,B,C]),
+    [A,B,C] = ?TM:node_task_get_downstream_pids(Node_Task_Pid),
+
+    sys:suspend(Node_Task_Pid),
+    Custom_Suspended_Fmt = get_custom_fmt(sys:get_status(Node_Task_Pid)).
+    %% Custom_Suspended_Props = proplists:get_value(data, Custom_Suspended_Fmt),
+    %% suspended = proplists:get_value("Status", Custom_Suspended_Props),
+    %% {coop_node_SUITE,x3} = proplists:get_value("Node_Fn", Custom_Suspended_Props),
+    %% 3 = proplists:get_value("Downstream_Pid_Count", Custom_Suspended_Props),
+    %% random = proplists:get_value("Data_Flow_Method", Custom_Suspended_Props).
+
+get_custom_fmt(Status) -> lists:nth(5, element(4, Status)).
