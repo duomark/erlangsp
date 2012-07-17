@@ -267,11 +267,11 @@ sys_format(_Config) ->
     [A,B,C] = ?TM:node_task_get_downstream_pids(Node_Task_Pid),
 
     sys:suspend(Node_Task_Pid),
-    Custom_Suspended_Fmt = get_custom_fmt(sys:get_status(Node_Task_Pid)).
-    %% Custom_Suspended_Props = proplists:get_value(data, Custom_Suspended_Fmt),
-    %% suspended = proplists:get_value("Status", Custom_Suspended_Props),
-    %% {coop_node_SUITE,x3} = proplists:get_value("Node_Fn", Custom_Suspended_Props),
-    %% 3 = proplists:get_value("Downstream_Pid_Count", Custom_Suspended_Props),
-    %% random = proplists:get_value("Data_Flow_Method", Custom_Suspended_Props).
+    Custom_Suspended_Fmt = get_custom_fmt(sys:get_status(Node_Task_Pid)),
+    Custom_Suspended_Props = proplists:get_value(data, Custom_Suspended_Fmt),
+    suspended = proplists:get_value("Status", Custom_Suspended_Props),
+    {coop_node_SUITE,x3} = proplists:get_value("Node_Fn", Custom_Suspended_Props),
+    3 = proplists:get_value("Downstream_Pid_Count", Custom_Suspended_Props),
+    random = proplists:get_value("Data_Flow_Method", Custom_Suspended_Props).
 
 get_custom_fmt(Status) -> lists:nth(5, element(4, Status)).
