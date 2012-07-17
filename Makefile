@@ -13,7 +13,7 @@ compile:
 	@${REBAR} compile
 
 dialyze: all
-	@dialyzer -Wrace_conditions ebin
+	@dialyzer -Wrace_conditions apps/*/ebin
 
 gc: crash
 	@echo 'Removing all emacs backup files'
