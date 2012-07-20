@@ -18,7 +18,7 @@
          task_compute_one/1, task_compute_three_round_robin/1,
          task_compute_three_broadcast/1, task_compute_random/1,
 
-         sys_suspend/1, sys_format/1
+         sys_suspend/1, sys_format/1, sys_statistics/1
         ]). 
 
 %% Spawned functions
@@ -37,7 +37,8 @@ groups() -> [{ctl_tests, [sequence],
              {sys_tests, [sequence],
               [
                {suspend, [sequence], [sys_suspend]},
-               {format,  [sequence], [sys_format]}
+               {format,  [sequence], [sys_format]},
+               {stats,   [sequence], [sys_statistics]}
               ]}
             ].
  
@@ -275,3 +276,27 @@ sys_format(_Config) ->
     random = proplists:get_value("Data_Flow_Method", Custom_Suspended_Props).
 
 get_custom_fmt(Status) -> lists:nth(5, element(4, Status)).
+
+sys_statistics(_Config) ->
+    Args = [_Kill_Switch, _Node_Fn, _Dist_Type] = create_new_coop_node_args(random),
+    {_Node_Ctl_Pid, Node_Task_Pid} = apply(?TM, new, Args),
+    [] = ?TM:node_task_get_downstream_pids(Node_Task_Pid),
+    sys:statistics(Node_Task_Pid, true),
+    sys:log(Node_Task_Pid, true),
+    sys:trace(Node_Task_Pid, true),
+    
+    Receiver = [self()],
+    ?TM:node_task_add_downstream_pids(Node_Task_Pid, Receiver),
+    Receiver = ?TM:node_task_get_downstream_pids(Node_Task_Pid),
+
+    %% Verify it computes normally...
+    [begin
+         ?TM:node_task_deliver_data(Node_Task_Pid, 5),
+         15 = receive Data1 -> Data1 end
+     end || _N <- lists:seq(1,10)],
+
+    error_logger:info_msg("Stats: ~p~n", [sys:statistics(Node_Task_Pid, get)]),
+    error_logger:info_msg("Last logged: ~p~n", [sys:log(Node_Task_Pid, get)]),
+    sys:trace(Node_Task_Pid, false),
+    sys:statistics(Node_Task_Pid, false),
+    sys:log(Node_Task_Pid, false).
