@@ -35,7 +35,10 @@ start_link() ->
 %% Supervisor callbacks
 %% ===================================================================
 
--spec init(Args::{}) -> {ok, any()}.
+-type restart() :: {supervisor:strategy(), non_neg_integer(), non_neg_integer()}.
+-type sup_init_return() :: {ok, {restart(), [supervisor:child_spec()]}}.
+
+-spec init({}) -> sup_init_return().
 
 %% @doc Placeholder for future supervision.
 init({}) ->
