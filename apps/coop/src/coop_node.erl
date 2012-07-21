@@ -194,12 +194,7 @@ node_data_loop(Node_Fn, Downstream_Pids, Data_Flow_Method, Debug_Opts) ->
     end.
 
 
-%% Handle debug messages...
-handle_sys({_Node_Fn, _Downstream_Pids, _Data_Flow_Method, Debug_Opts} = Coop_Internals,
-           From, {debug, _Debug_Msg} = System_Msg) ->
-    [Parent | _] = get('$ancestors'),
-    sys:handle_system_msg(System_Msg, From, Parent, ?MODULE, Debug_Opts, Coop_Internals);
-%% All others are system messages.
+%% Handle system and debug messages...
 handle_sys({_Node_Fn, _Downstream_Pids, _Data_Flow_Method, Debug_Opts} = Coop_Internals,
            From, System_Msg) ->
     [Parent | _] = get('$ancestors'),
@@ -234,7 +229,8 @@ format_status(normal, [_PDict, SysState, Parent, New_Debug_Opts,
              {"Downstream_Pid_Count", Pid_Count},
              {"Data_Flow_Method",     Data_Flow_Method},
              {"Parent",               Parent},
-             {"Logged events",        Log}]
+             {"Logged events",        Log},
+             {"Debug",                New_Debug_Opts}]
      }];
 
 format_status(terminate, StatusData) -> [terminate, StatusData].

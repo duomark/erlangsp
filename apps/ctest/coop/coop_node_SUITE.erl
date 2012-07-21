@@ -18,7 +18,8 @@
          task_compute_one/1, task_compute_three_round_robin/1,
          task_compute_three_broadcast/1, task_compute_random/1,
 
-         sys_suspend/1, sys_format/1, sys_statistics/1, sys_log/1
+         sys_suspend/1, sys_format/1, sys_statistics/1, sys_log/1,
+         sys_install/1
         ]). 
 
 %% Spawned functions
@@ -39,7 +40,8 @@ groups() -> [{ctl_tests, [sequence],
                {suspend, [sequence], [sys_suspend]},
                {format,  [sequence], [sys_format]},
                {stats,   [sequence], [sys_statistics]},
-               {log,     [sequence], [sys_log]}
+               {log,     [sequence], [sys_log]},
+               {install, [sequence], [sys_install]}
               ]}
             ].
  
@@ -124,11 +126,21 @@ report_result(Rcvd) ->
 get_result_data(Pid) ->
     Pid ! {get_oldest, self()},
     receive Any -> Any after 50 -> timeout end.
-    
-task_compute_one(_Config) ->
+
+setup_no_downstream() ->    
     Args = [_Kill_Switch, _Node_Fn] = create_new_coop_node_args(),
     {_Node_Ctl_Pid, Node_Task_Pid} = apply(?TM, new, Args),
     [] = ?TM:node_task_get_downstream_pids(Node_Task_Pid),
+    Node_Task_Pid.
+
+setup_no_downstream(Dist_Type) ->    
+    Args = [_Kill_Switch, _Node_Fn, Dist_Type] = create_new_coop_node_args(Dist_Type),
+    {_Node_Ctl_Pid, Node_Task_Pid} = apply(?TM, new, Args),
+    [] = ?TM:node_task_get_downstream_pids(Node_Task_Pid),
+    Node_Task_Pid.
+    
+task_compute_one(_Config) ->
+    Node_Task_Pid = setup_no_downstream(),
     
     Receiver = [self()],
     ?TM:node_task_add_downstream_pids(Node_Task_Pid, Receiver),
@@ -138,10 +150,7 @@ task_compute_one(_Config) ->
     15 = receive Data -> Data end.
 
 task_compute_three_round_robin(_Config) ->
-    Args = [_Kill_Switch, _Node_Fn] = create_new_coop_node_args(),
-    {_Node_Ctl_Pid, Node_Task_Pid} = apply(?TM, new, Args),
-    [] = ?TM:node_task_get_downstream_pids(Node_Task_Pid),
-
+    Node_Task_Pid = setup_no_downstream(),
     Receivers = [A,B,C] = [proc_lib:spawn_link(?MODULE, report_result, [[]])
                            || _N <- lists:seq(1,3)],
     ?TM:node_task_add_downstream_pids(Node_Task_Pid, [A]),
@@ -172,10 +181,7 @@ task_compute_three_round_robin(_Config) ->
     [none, 21, 18] = [get_result_data(Pid) || Pid <- Receivers].
 
 task_compute_three_broadcast(_Config) ->
-    Args = [_Kill_Switch, _Node_Fn, _Dist_Type] = create_new_coop_node_args(broadcast),
-    {_Node_Ctl_Pid, Node_Task_Pid} = apply(?TM, new, Args),
-    [] = ?TM:node_task_get_downstream_pids(Node_Task_Pid),
-
+    Node_Task_Pid = setup_no_downstream(broadcast),
     Receivers = [A,B,C] = [proc_lib:spawn_link(?MODULE, report_result, [[]])
                            || _N <- lists:seq(1,3)],
     ?TM:node_task_add_downstream_pids(Node_Task_Pid, [A]),
@@ -193,10 +199,7 @@ task_compute_three_broadcast(_Config) ->
     [18, 18, 18] = [get_result_data(Pid) || Pid <- Receivers].
 
 task_compute_random(_Config) ->
-    Args = [_Kill_Switch, _Node_Fn, _Dist_Type] = create_new_coop_node_args(random),
-    {_Node_Ctl_Pid, Node_Task_Pid} = apply(?TM, new, Args),
-    [] = ?TM:node_task_get_downstream_pids(Node_Task_Pid),
-
+    Node_Task_Pid = setup_no_downstream(random),
     Receivers = [proc_lib:spawn_link(?MODULE, report_result, [[]])
                  || _N <- lists:seq(1,5)],
     ?TM:node_task_add_downstream_pids(Node_Task_Pid, Receivers),
@@ -228,10 +231,7 @@ task_compute_random(_Config) ->
     ets:delete(Ets_Name).
 
 sys_suspend(_Config) ->
-    Args = [_Kill_Switch, _Node_Fn, _Dist_Type] = create_new_coop_node_args(random),
-    {_Node_Ctl_Pid, Node_Task_Pid} = apply(?TM, new, Args),
-    [] = ?TM:node_task_get_downstream_pids(Node_Task_Pid),
-    
+    Node_Task_Pid = setup_no_downstream(),
     Receiver = [self()],
     ?TM:node_task_add_downstream_pids(Node_Task_Pid, Receiver),
     Receiver = ?TM:node_task_get_downstream_pids(Node_Task_Pid),
@@ -251,9 +251,7 @@ sys_suspend(_Config) ->
     15 = receive Data3 -> Data3 after 100 -> 0 end.
 
 sys_format(_Config) ->
-    Args = [_Kill_Switch, _Node_Fn, _Dist_Type] = create_new_coop_node_args(random),
-    {_Node_Ctl_Pid, Node_Task_Pid} = apply(?TM, new, Args),
-    [] = ?TM:node_task_get_downstream_pids(Node_Task_Pid),
+    Node_Task_Pid = setup_no_downstream(random),
 
     %% Get the custom status information...
     Custom_Running_Fmt = get_custom_fmt(sys:get_status(Node_Task_Pid)),
@@ -290,9 +288,7 @@ send_data(N, Node_Task_Pid) ->
      end || _N <- lists:seq(1,N)].
     
 sys_statistics(_Config) ->
-    Args = [_Kill_Switch, _Node_Fn, _Dist_Type] = create_new_coop_node_args(random),
-    {_Node_Ctl_Pid, Node_Task_Pid} = apply(?TM, new, Args),
-    [] = ?TM:node_task_get_downstream_pids(Node_Task_Pid),
+    Node_Task_Pid = setup_no_downstream(),
     ok = sys:statistics(Node_Task_Pid, true),
     {ok, Props1} = sys:statistics(Node_Task_Pid, get),
     [0,0] = [proplists:get_value(P, Props1) || P <- [messages_in, messages_out]],
@@ -302,9 +298,7 @@ sys_statistics(_Config) ->
     ok = sys:statistics(Node_Task_Pid, false).
 
 sys_log(_Config) ->
-    Args = [_Kill_Switch, _Node_Fn, _Dist_Type] = create_new_coop_node_args(random),
-    {_Node_Ctl_Pid, Node_Task_Pid} = apply(?TM, new, Args),
-    [] = ?TM:node_task_get_downstream_pids(Node_Task_Pid),
+    Node_Task_Pid = setup_no_downstream(),
     ok = sys:log(Node_Task_Pid, true),
     {ok, []} = sys:log(Node_Task_Pid, get),
     send_data(6, Node_Task_Pid),
@@ -318,3 +312,28 @@ sys_log(_Config) ->
 
     %% sys:trace(Node_Task_Pid, true),
     %% sys:trace(Node_Task_Pid, false),
+
+sys_install(_Config) ->
+    Node_Task_Pid = setup_no_downstream(),
+    Pid = spawn_link(fun() -> receive {15, 30} -> ok;
+                                      Bad_Result -> exit(Bad_Result)
+                              after 2000 -> exit(timeout)
+                              end
+                     end),
+    F = fun
+            ({Ins, Outs, 3}, _Any, round_robin) ->
+                Pid ! {Ins, Outs}, done;
+            ({Ins, Outs, Count}, {in, Amt}, round_robin) when is_integer(Amt) ->
+                {Ins+Amt, Outs, Count+1};
+            ({Ins, Outs, Count}, {out, Amt, _Pid}, round_robin) when is_integer(Amt) ->
+                {Ins, Outs+Amt, Count};
+            ({Ins, Outs, Count}, {in, {add_downstream, _Id}}, round_robin) ->
+                {Ins, Outs, Count};
+            ({Ins, Outs, Count}, {in, {get_downstream, _Id}}, round_robin) ->
+                {Ins, Outs, Count};
+            ({Ins, Outs, Count}, _Unknown, round_robin) ->
+                {Ins+1, Outs+1, Count+1}
+        end,
+    ok = sys:install(Node_Task_Pid, {F, {0,0,0}}),
+    send_data(5, Node_Task_Pid),
+    timer:sleep(100).
