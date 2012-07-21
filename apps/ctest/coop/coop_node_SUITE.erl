@@ -18,7 +18,7 @@
          task_compute_one/1, task_compute_three_round_robin/1,
          task_compute_three_broadcast/1, task_compute_random/1,
 
-         sys_suspend/1, sys_format/1, sys_statistics/1
+         sys_suspend/1, sys_format/1, sys_statistics/1, sys_log/1
         ]). 
 
 %% Spawned functions
@@ -38,7 +38,8 @@ groups() -> [{ctl_tests, [sequence],
               [
                {suspend, [sequence], [sys_suspend]},
                {format,  [sequence], [sys_format]},
-               {stats,   [sequence], [sys_statistics]}
+               {stats,   [sequence], [sys_statistics]},
+               {log,     [sequence], [sys_log]}
               ]}
             ].
  
@@ -242,7 +243,7 @@ sys_suspend(_Config) ->
     %% Suspend message handling and get no result...
     sys:suspend(Node_Task_Pid),
     ?TM:node_task_deliver_data(Node_Task_Pid, 5),
-    0 = receive Data2 -> Data2 after 100 -> 0 end,
+    0 = receive Data2 -> Data2 after 1000 -> 0 end,
     true = is_process_alive(Node_Task_Pid),
 
     %% Resume and result appears.
@@ -277,14 +278,7 @@ sys_format(_Config) ->
 
 get_custom_fmt(Status) -> lists:nth(5, element(4, Status)).
 
-sys_statistics(_Config) ->
-    Args = [_Kill_Switch, _Node_Fn, _Dist_Type] = create_new_coop_node_args(random),
-    {_Node_Ctl_Pid, Node_Task_Pid} = apply(?TM, new, Args),
-    [] = ?TM:node_task_get_downstream_pids(Node_Task_Pid),
-    sys:statistics(Node_Task_Pid, true),
-    sys:log(Node_Task_Pid, true),
-    sys:trace(Node_Task_Pid, true),
-    
+send_data(N, Node_Task_Pid) ->
     Receiver = [self()],
     ?TM:node_task_add_downstream_pids(Node_Task_Pid, Receiver),
     Receiver = ?TM:node_task_get_downstream_pids(Node_Task_Pid),
@@ -292,11 +286,35 @@ sys_statistics(_Config) ->
     %% Verify it computes normally...
     [begin
          ?TM:node_task_deliver_data(Node_Task_Pid, 5),
-         15 = receive Data1 -> Data1 end
-     end || _N <- lists:seq(1,10)],
+         15 = receive Data -> Data end
+     end || _N <- lists:seq(1,N)].
+    
+sys_statistics(_Config) ->
+    Args = [_Kill_Switch, _Node_Fn, _Dist_Type] = create_new_coop_node_args(random),
+    {_Node_Ctl_Pid, Node_Task_Pid} = apply(?TM, new, Args),
+    [] = ?TM:node_task_get_downstream_pids(Node_Task_Pid),
+    ok = sys:statistics(Node_Task_Pid, true),
+    {ok, Props1} = sys:statistics(Node_Task_Pid, get),
+    [0,0] = [proplists:get_value(P, Props1) || P <- [messages_in, messages_out]],
+    send_data(10, Node_Task_Pid),
+    {ok, Props2} = sys:statistics(Node_Task_Pid, get),
+    [12,10] = [proplists:get_value(P, Props2) || P <- [messages_in, messages_out]],
+    ok = sys:statistics(Node_Task_Pid, false).
 
-    error_logger:info_msg("Stats: ~p~n", [sys:statistics(Node_Task_Pid, get)]),
-    error_logger:info_msg("Last logged: ~p~n", [sys:log(Node_Task_Pid, get)]),
-    sys:trace(Node_Task_Pid, false),
-    sys:statistics(Node_Task_Pid, false),
+sys_log(_Config) ->
+    Args = [_Kill_Switch, _Node_Fn, _Dist_Type] = create_new_coop_node_args(random),
+    {_Node_Ctl_Pid, Node_Task_Pid} = apply(?TM, new, Args),
+    [] = ?TM:node_task_get_downstream_pids(Node_Task_Pid),
+    ok = sys:log(Node_Task_Pid, true),
+    {ok, []} = sys:log(Node_Task_Pid, get),
+    send_data(6, Node_Task_Pid),
+    {ok, Events} = sys:log(Node_Task_Pid, get),
+    10 = length(Events),
+    Ins = lists:duplicate(5,{in,5}),
+    Ins = [{Type,Num} || {{Type,Num}, _Flow, _Fun} <- Events],
+    Outs = lists:duplicate(5,{out,15}),
+    Outs = [{Type,Num} || {{Type,Num,_Pid}, _Flow, _Fun} <- Events],
     sys:log(Node_Task_Pid, false).
+
+    %% sys:trace(Node_Task_Pid, true),
+    %% sys:trace(Node_Task_Pid, false),
