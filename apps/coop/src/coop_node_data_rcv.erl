@@ -12,7 +12,7 @@
 -author(jayn).
 
 %% Graph API
--export([node_data_loop/4]).
+-export([node_data_loop/3, node_data_loop/4]).
 
 %% System message API functions
 -export([
@@ -27,7 +27,12 @@
 %% Coop Node data is executed using Node_Fn and the results are
 %% passed to one or more of the downstream workers.
 %%----------------------------------------------------------------------
--spec node_data_loop(task_function(), downstream_workers(), data_flow_method(), any()) -> no_return().
+-spec node_data_loop(task_function(), downstream_workers(), data_flow_method()) -> no_return().
+-spec node_data_loop(task_function(), downstream_workers(), data_flow_method(),
+                     [sys:dbg_opt()]) -> no_return().
+
+node_data_loop(Node_Fn, Downstream_Pids, Data_Flow_Method) ->
+    node_data_loop(Node_Fn, Downstream_Pids, Data_Flow_Method, sys:debug_options([])).
 
 node_data_loop(Node_Fn, Downstream_Pids, Data_Flow_Method, Debug_Opts) ->
     receive
@@ -132,6 +137,11 @@ reply_downstream_pids_as_list(_Not_Random, Downstream_Pids, Ref, From) ->
 %%----------------------------------------------------------------------
 %% System, debug and control messages for OTP compatibility
 %%----------------------------------------------------------------------
+-spec system_continue(pid(), [sys:dbg_opt()], term()) -> no_return().
+-spec system_terminate(atom(), pid(), [sys:dbg_opt()], term()) -> no_return().
+-spec system_code_change(term(), module(), atom(), term()) -> {ok, term()}.
+-spec format_status(normal | terminate, list()) -> [proplists:property()].
+
 handle_sys({_Node_Fn, _Downstream_Pids, _Data_Flow_Method, Debug_Opts} = Coop_Internals,
            From, System_Msg) ->
     [Parent | _] = get('$ancestors'),
@@ -170,4 +180,4 @@ format_status(normal, [_PDict, SysState, Parent, New_Debug_Opts,
              {"Debug",                New_Debug_Opts}]
      }];
 
-format_status(terminate, StatusData) -> [terminate, StatusData].
+format_status(terminate, StatusData) -> [{terminate, StatusData}].

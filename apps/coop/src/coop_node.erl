@@ -93,9 +93,8 @@ new(Kill_Switch, {_Task_Mod, _Task_Fn} = Node_Fn, Data_Flow_Method)
         [proc_lib:spawn(?MODULE, link_loop, []) || _N <- lists:seq(1,3)],
 
     %% Start the data task process...
-    Debug_Opts = sys:debug_options([]),
     Worker_Set = case Data_Flow_Method of random -> {}; _Other -> queue:new() end,
-    Task_Args = [Node_Fn, Worker_Set, Data_Flow_Method, Debug_Opts],
+    Task_Args = [Node_Fn, Worker_Set, Data_Flow_Method],
     Task_Pid = proc_lib:spawn(coop_node_data_rcv, node_data_loop, Task_Args),
 
     %% Start the control process...
