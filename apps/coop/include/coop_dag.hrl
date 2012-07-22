@@ -1,4 +1,14 @@
 
+%% Temporary compiler warning fix
+-export([receive_reply/1]).
+
+-type single_data_flow_method() :: random | round_robin.
+-type multiple_data_flow_method() :: broadcast.
+-type data_flow_method() :: single_data_flow_method() | multiple_data_flow_method().
+
+-type task_function() :: {module(), atom()}.
+-type downstream_workers() :: queue().
+
 -define(DAG_TOKEN,  '$$_DAG').
 -define(DATA_TOKEN, '$$_DATA').
 -define(CTL_TOKEN,  '$$_CTL').
