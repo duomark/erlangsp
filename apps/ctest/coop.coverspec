@@ -1,0 +1,2 @@
+{export, "./coop/logs/cover"}.
+{incl_mods, [coop, coop_node, coop_node_data_rcv, coop_node_util]}.
