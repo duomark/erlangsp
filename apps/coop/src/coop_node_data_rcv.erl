@@ -36,13 +36,14 @@ node_data_loop(Node_Fn, Downstream_Pids, Data_Flow_Method) ->
 
 node_data_loop(Node_Fn, Downstream_Pids, Data_Flow_Method, Debug_Opts) ->
     receive
-        %% 3 types of system messages: stdlib-1.18.1/doc/html/sys.html...
+        %% System messages
         {'EXIT', _Parent, Reason} -> exit(Reason);
         {system, From, System_Msg} ->
             Sys_Args = {Node_Fn, Downstream_Pids, Data_Flow_Method, Debug_Opts},
             handle_sys(Sys_Args, From, System_Msg);
         {get_modules, From} ->
-            From ! {modules, [?MODULE]},
+            {Task_Module, _Task_Fn} = Node_Fn,
+            From ! {modules, [?MODULE, Task_Module]},
             node_data_loop(Node_Fn, Downstream_Pids, Data_Flow_Method, Debug_Opts);
 
         %% Node control messages affecting Node_Fn, Pids or Data_Flow_Method...
@@ -57,13 +58,13 @@ node_data_loop(Node_Fn, Downstream_Pids, Data_Flow_Method, Debug_Opts) ->
             New_Opts = sys:handle_debug(Debug_Opts, fun debug_coop/3,
                                         Data_Flow_Method, {in, Data}),
             {Final_Debug_Opts, Maybe_Reordered_Pids}
-                = relay_data(Data, Node_Fn, Downstream_Pids, Data_Flow_Method, New_Opts),
+                = relay_data(New_Opts, Node_Fn, Data_Flow_Method, Data, Downstream_Pids),
             node_data_loop(Node_Fn, Maybe_Reordered_Pids, Data_Flow_Method, Final_Debug_Opts)
     end.
 
 
 %% Relay data to all Downstream_Pids...
-relay_data(Data, {Module, Function} = _Node_Fn, Worker_Set, broadcast, Debug_Opts) ->
+relay_data(Debug_Opts, {Module, Function} = _Node_Fn, broadcast, Data, Worker_Set) ->
     Fn_Result = Module:Function(Data),
     New_Opts = lists:foldl(fun(To, Opts) ->
                                    To ! Fn_Result,
@@ -72,22 +73,17 @@ relay_data(Data, {Module, Function} = _Node_Fn, Worker_Set, broadcast, Debug_Opt
                            end, Debug_Opts, queue:to_list(Worker_Set)),
     {New_Opts, Worker_Set};
 %% Faster routing if only one Downstream_Pid...
-relay_data(Data, {Module, Function} = _Node_Fn, {Pid} = Worker_Set,
-           Single_Data_Flow_Method, Debug_Opts) ->
-    Fn_Result = Module:Function(Data),
-    Pid ! Fn_Result,
-    notify_debug_and_return(Debug_Opts, Single_Data_Flow_Method, Pid, Fn_Result, Worker_Set);
+relay_data(Debug_Opts, Node_Fn, Single_Data_Flow_Method, Data, {Pid} = Worker_Set) ->
+    notify_debug_and_return(Debug_Opts, Node_Fn, Single_Data_Flow_Method, Data, Worker_Set, Pid);
 %% Relay data with random or round_robin has to choose a single destination.
-relay_data(Data, {Module, Function} = _Node_Fn, Worker_Set,
-           Single_Data_Flow_Method, Debug_Opts) ->
+relay_data(Debug_Opts, Node_Fn, Single_Data_Flow_Method, Data, Worker_Set) ->
     {Worker, New_Worker_Set} = choose_worker(Worker_Set, Single_Data_Flow_Method),
-    Fn_Result = Module:Function(Data),
-    Worker ! Fn_Result,
-    notify_debug_and_return(Debug_Opts, Single_Data_Flow_Method, Worker, Fn_Result, New_Worker_Set).
+    notify_debug_and_return(Debug_Opts, Node_Fn, Single_Data_Flow_Method, Data, New_Worker_Set, Worker).
 
-notify_debug_and_return(Debug_Opts, Data_Flow_Method, Pid, Result, Worker_Set) ->
-    New_Opts = sys:handle_debug(Debug_Opts, fun debug_coop/3,
-                                Data_Flow_Method, {out, Result, Pid}),
+%% Used only for single downstream pid delivery methods.
+notify_debug_and_return(Debug_Opts, {Module, Function}, Data_Flow_Method, Data, Worker_Set, Pid) ->
+    Fn_Result = Pid ! Module:Function(Data),
+    New_Opts = sys:handle_debug(Debug_Opts, fun debug_coop/3, Data_Flow_Method, {out, Fn_Result, Pid}),
     {New_Opts, Worker_Set}.
 
 %% Choose a worker randomly without changing the Worker_Set...

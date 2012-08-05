@@ -2,6 +2,7 @@
 %% Temporary compiler warning fix
 -export([receive_reply/1]).
 
+%% TODO: Add 'ephemeral' to use round_robin but expire at end of task
 -type single_data_flow_method() :: random | round_robin.
 -type multiple_data_flow_method() :: broadcast.
 -type data_flow_method() :: single_data_flow_method() | multiple_data_flow_method().
@@ -13,6 +14,9 @@
 -define(DATA_TOKEN, '$$_DATA').
 -define(CTL_TOKEN,  '$$_CTL').
 
+%%----------------------------------------------------------
+%% Old code that may be eliminated soon
+%%----------------------------------------------------------
 -define(DAG_MSG(__Graph, __Type),
         __Ref = make_ref(),
         __Graph ! {?DAG_TOKEN, __Type, {__Ref, self()}},

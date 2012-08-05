@@ -73,7 +73,7 @@ create_new_coop_node_args(Dist_Type) ->
 
 node_ctl_kill_one_proc(_Config) ->
     Args = [Kill_Switch, _Node_Fn] = create_new_coop_node_args(),
-    {Node_Ctl_Pid, Node_Task_Pid} = apply(?TM, new, Args),
+    {coop_node, Node_Ctl_Pid, Node_Task_Pid} = apply(?TM, new, Args),
     true = is_process_alive(Node_Ctl_Pid),
     true = is_process_alive(Node_Task_Pid),
     exit(Node_Task_Pid, kill),
@@ -84,10 +84,10 @@ node_ctl_kill_one_proc(_Config) ->
 
 node_ctl_kill_two_proc(_Config) ->
     Args = [Kill_Switch, _Node_Fn] = create_new_coop_node_args(),
-    {Node_Ctl_Pid1, Node_Task_Pid1} = apply(?TM, new, Args),
+    {coop_node, Node_Ctl_Pid1, Node_Task_Pid1} = apply(?TM, new, Args),
     true = is_process_alive(Node_Ctl_Pid1),
     true = is_process_alive(Node_Task_Pid1),
-    {Node_Ctl_Pid2, Node_Task_Pid2} = apply(?TM, new, Args),
+    {coop_node, Node_Ctl_Pid2, Node_Task_Pid2} = apply(?TM, new, Args),
     true = is_process_alive(Node_Ctl_Pid2),
     true = is_process_alive(Node_Task_Pid2),
     exit(Node_Ctl_Pid2, kill),
@@ -100,7 +100,7 @@ node_ctl_kill_two_proc(_Config) ->
 
 node_ctl_stop_one_proc(_Config) ->
     Args = [Kill_Switch, _Node_Fn] = create_new_coop_node_args(),
-    {Node_Ctl_Pid, Node_Task_Pid} = apply(?TM, new, Args),
+    {coop_node, Node_Ctl_Pid, Node_Task_Pid} = apply(?TM, new, Args),
     true = is_process_alive(Node_Ctl_Pid),
     true = is_process_alive(Node_Task_Pid),
     ?TM:node_ctl_stop(Node_Ctl_Pid),
@@ -109,6 +109,7 @@ node_ctl_stop_one_proc(_Config) ->
     false = is_process_alive(Node_Task_Pid),
     false = is_process_alive(Kill_Switch).
 
+%%    coop_node:node_ctl_trace(Node_Ctl_Pid),
 
 %%----------------------------------------------------------------------
 %% Function Tasks
@@ -129,13 +130,13 @@ get_result_data(Pid) ->
 
 setup_no_downstream() ->    
     Args = [_Kill_Switch, _Node_Fn] = create_new_coop_node_args(),
-    {_Node_Ctl_Pid, Node_Task_Pid} = apply(?TM, new, Args),
+    {coop_node, _Node_Ctl_Pid, Node_Task_Pid} = apply(?TM, new, Args),
     [] = ?TM:node_task_get_downstream_pids(Node_Task_Pid),
     Node_Task_Pid.
 
 setup_no_downstream(Dist_Type) ->    
     Args = [_Kill_Switch, _Node_Fn, Dist_Type] = create_new_coop_node_args(Dist_Type),
-    {_Node_Ctl_Pid, Node_Task_Pid} = apply(?TM, new, Args),
+    {coop_node, _Node_Ctl_Pid, Node_Task_Pid} = apply(?TM, new, Args),
     [] = ?TM:node_task_get_downstream_pids(Node_Task_Pid),
     Node_Task_Pid.
     
