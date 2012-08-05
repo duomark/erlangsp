@@ -300,38 +300,47 @@ send_data(N, Node_Task_Pid) ->
      end || _N <- lists:seq(1,N)].
     
 sys_statistics(_Config) ->
-    {coop_node, _Node_Ctl_Pid, Node_Task_Pid} = setup_no_downstream(),
-    ok = sys:statistics(Node_Task_Pid, true),
-    {ok, Props1} = sys:statistics(Node_Task_Pid, get),
+    Coop_Node = {coop_node, _Node_Ctl_Pid, Node_Task_Pid} = setup_no_downstream(),
+    ok = ?TM:node_ctl_stats(Coop_Node, true, self()),
+    {ok, Props1} = ?TM:node_ctl_stats(Coop_Node, get, self()),
     [0,0] = [proplists:get_value(P, Props1) || P <- [messages_in, messages_out]],
     send_data(10, Node_Task_Pid),
-    {ok, Props2} = sys:statistics(Node_Task_Pid, get),
+    {ok, Props2} = ?TM:node_ctl_stats(Coop_Node, get, self()),
     [12,10] = [proplists:get_value(P, Props2) || P <- [messages_in, messages_out]],
-    ok = sys:statistics(Node_Task_Pid, false).
+    ok = ?TM:node_ctl_stats(Coop_Node, false, self()).
 
 sys_log(_Config) ->
-    {coop_node, _Node_Ctl_Pid, Node_Task_Pid} = setup_no_downstream(),
-    ok = sys:log(Node_Task_Pid, true),
-    {ok, []} = sys:log(Node_Task_Pid, get),
+    Coop_Node = {coop_node, _Node_Ctl_Pid, Node_Task_Pid} = setup_no_downstream(),
+    ok = ?TM:node_ctl_log(Coop_Node, true, self()),
+    {ok, []} = ?TM:node_ctl_log(Coop_Node, get, self()),
     send_data(6, Node_Task_Pid),
-    {ok, Events} = sys:log(Node_Task_Pid, get),
+    {ok, Events} = ?TM:node_ctl_log(Coop_Node, get, self()),
     10 = length(Events),
     Ins = lists:duplicate(5,{in,5}),
     Ins = [{Type,Num} || {{Type,Num}, _Flow, _Fun} <- Events],
     Outs = lists:duplicate(5,{out,15}),
     Outs = [{Type,Num} || {{Type,Num,_Pid}, _Flow, _Fun} <- Events],
-    sys:log(Node_Task_Pid, false).
+    ?TM:node_ctl_log(Coop_Node, false, self()).
 
 sys_install(_Config) ->
-    {coop_node, _Node_Ctl_Pid, Node_Task_Pid} = setup_no_downstream(),
-    Pid = spawn_link(fun() -> receive {15, 30} -> ok;
+    Coop_Node = {coop_node, _Node_Ctl_Pid, Node_Task_Pid} = setup_no_downstream(),
+    Pid = spawn_link(fun() ->
+                             %% Trace results...
+                             receive {15, 30} -> ok;
                                       Bad_Result -> exit(Bad_Result)
                               after 2000 -> exit(timeout)
-                              end
+                              end,
+                             
+                             %% After trace uninstalled.
+                             case receive Data -> Data after 200 -> timeout end of
+                                 {data, 21} -> ok;
+                                 Bad -> Msg = io_lib:format("Trace_Fn failed ~p",[Bad]),
+                                        exit(lists:flatten(Msg))
+                             end
                      end),
     F = fun
             ({Ins, Outs, 3}, _Any, round_robin) ->
-                Pid ! {Ins, Outs}, done;
+                Pid ! {Ins, Outs};
             ({Ins, Outs, Count}, {in, Amt}, round_robin) when is_integer(Amt) ->
                 {Ins+Amt, Outs, Count+1};
             ({Ins, Outs, Count}, {out, Amt, _Pid}, round_robin) when is_integer(Amt) ->
@@ -340,13 +349,17 @@ sys_install(_Config) ->
                 {Ins, Outs, Count};
             ({Ins, Outs, Count}, {in, {get_downstream, _Id}}, round_robin) ->
                 {Ins, Outs, Count};
-            ({Ins, Outs, Count}, _Unknown, round_robin) ->
-                {Ins+1, Outs+1, Count+1}
+            (_State, Unknown, _Extra) ->
+                Pid ! {unknown_msg_rcvd, Unknown}
         end,
-    ok = sys:install(Node_Task_Pid, {F, {0,0,0}}),
-    send_data(5, Node_Task_Pid),
-    timer:sleep(100).
+    ok = ?TM:node_ctl_install_trace_fn(Coop_Node, {F, {0,0,0}}, self()),
 
+    send_data(3, Node_Task_Pid),
+    timer:sleep(50),
+    ok = ?TM:node_ctl_remove_trace_fn(Coop_Node, F, self()),
+    ?TM:node_task_deliver_data(Node_Task_Pid, 7),
+    receive Data -> Pid ! {data, Data} after 50 -> 0 end,
+    timer:sleep(2000).
 
 %% sys:trace(Node_Task_Pid, true),
 %% sys:trace(Node_Task_Pid, false),

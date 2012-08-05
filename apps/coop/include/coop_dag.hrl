@@ -18,6 +18,10 @@
         {coop_node, __Ctl_Pid, __Task_Pid} = __Coop_Node,
         __Ctl_Pid ! {?DAG_TOKEN, ?CTL_TOKEN, __Ctl_Msg}).
 
+-define(SEND_CTL_MSG(__Coop_Node, __Ctl_Msg, __Flag, __Caller),
+        {coop_node, __Ctl_Pid, __Task_Pid} = __Coop_Node,
+        __Ctl_Pid ! {?DAG_TOKEN, ?CTL_TOKEN, __Ctl_Msg, __Flag, __Caller}).
+
 %%----------------------------------------------------------
 %% Old code that may be eliminated soon
 %%----------------------------------------------------------

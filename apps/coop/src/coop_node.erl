@@ -15,10 +15,10 @@
 -export([
          new/2, new/3,
          node_ctl_clone/1, node_ctl_stop/1,
-         node_ctl_suspend/1, node_ctl_resume/1,
-         node_ctl_trace/1, node_ctl_untrace/1,
-         node_task_get_downstream_pids/1,
-         node_task_add_downstream_pids/2,
+         node_ctl_suspend/1, node_ctl_resume/1, node_ctl_trace/1, node_ctl_untrace/1,
+         node_ctl_stats/3, node_ctl_log/3,
+         node_ctl_install_trace_fn/3, node_ctl_remove_trace_fn/3,
+         node_task_get_downstream_pids/1, node_task_add_downstream_pids/2,
          node_task_deliver_data/2
         ]).
 
@@ -139,6 +139,9 @@ new(Kill_Switch, {_Task_Mod, _Task_Fn} = Node_Fn, Data_Flow_Method)
     link_to_kill_switch(Kill_Switch, [Ctl_Pid, Task_Pid, Trace_Pid, Log_Pid, Reflect_Pid]),
     {coop_node, Ctl_Pid, Task_Pid}.
 
+
+-define(SYNC_RECEIVE_TIME, 2000).
+
 node_ctl_clone  (Coop_Node) -> ?SEND_CTL_MSG(Coop_Node, clone).
 node_ctl_stop   (Coop_Node) -> ?SEND_CTL_MSG(Coop_Node, stop).
 node_ctl_suspend(Coop_Node) -> ?SEND_CTL_MSG(Coop_Node, suspend).
@@ -146,8 +149,30 @@ node_ctl_resume (Coop_Node) -> ?SEND_CTL_MSG(Coop_Node, resume).
 node_ctl_trace  (Coop_Node) -> ?SEND_CTL_MSG(Coop_Node, trace).
 node_ctl_untrace(Coop_Node) -> ?SEND_CTL_MSG(Coop_Node, untrace).
 
+wait_ctl_response(Type, Ref) ->
+    receive {Type, Ref, Info} -> Info
+    after ?SYNC_RECEIVE_TIME  -> timeout
+    end.
+    
+node_ctl_log(Coop_Node, Flag, From) ->
+    Ref = make_ref(),
+    ?SEND_CTL_MSG(Coop_Node, log, Flag, {Ref, From}),
+    wait_ctl_response(node_ctl_log, Ref).
 
--define(SYNC_RECEIVE_TIME, 2000).
+node_ctl_stats(Coop_Node, Flag, From) ->
+    Ref = make_ref(),
+    ?SEND_CTL_MSG(Coop_Node, stats, Flag, {Ref, From}),
+    wait_ctl_response(node_ctl_stats, Ref).
+
+node_ctl_install_trace_fn(Coop_Node, {Func, Func_State}, From) ->
+    Ref = make_ref(),
+    ?SEND_CTL_MSG(Coop_Node, install_trace_fn, {Func, Func_State}, {Ref, From}),
+    wait_ctl_response(node_ctl_install_trace_fn, Ref).
+
+node_ctl_remove_trace_fn(Coop_Node, Func, From) ->
+    Ref = make_ref(),
+    ?SEND_CTL_MSG(Coop_Node, remove_trace_fn, Func, {Ref, From}),
+    wait_ctl_response(node_ctl_remove_trace_fn, Ref).
 
 node_task_get_downstream_pids(Node_Task_Pid) ->
     Ref = make_ref(),
@@ -183,23 +208,24 @@ node_ctl_loop(#coop_node_state{task=Task_Pid, trace=Trace_Pid} = Coop_Node_State
         {?DAG_TOKEN, ?CTL_TOKEN, stop}    -> exit(stopped);
         {?DAG_TOKEN, ?CTL_TOKEN, clone}   -> node_clone(Coop_Node_State);
 
-        %% Commands for controlling the Task_Pid...
-        {?DAG_TOKEN, ?CTL_TOKEN, suspend} -> sys:suspend(Task_Pid);
-        {?DAG_TOKEN, ?CTL_TOKEN, resume}  -> sys:resume(Task_Pid);
-        {?DAG_TOKEN, ?CTL_TOKEN, trace}   -> node_trace(Task_Pid, Trace_Pid);
-        {?DAG_TOKEN, ?CTL_TOKEN, untrace} -> node_untrace(Task_Pid, Trace_Pid);
+        %% Commands for controlling/monitoring the Task_Pid...
+        {?DAG_TOKEN, ?CTL_TOKEN, suspend } -> sys:suspend(Task_Pid);
+        {?DAG_TOKEN, ?CTL_TOKEN, resume  } -> sys:resume(Task_Pid);
+        {?DAG_TOKEN, ?CTL_TOKEN, trace   } -> erlang:trace(Task_Pid, true,  trace_options(Trace_Pid));
+        {?DAG_TOKEN, ?CTL_TOKEN, untrace } -> erlang:trace(Task_Pid, false, trace_options(Trace_Pid));
+
+        {?DAG_TOKEN, ?CTL_TOKEN, log,      Flag,  {Ref, From}} -> From ! {node_ctl_log, Ref, sys:log(Task_Pid, Flag)};
+        {?DAG_TOKEN, ?CTL_TOKEN, stats,    Flag,  {Ref, From}} -> From ! {node_ctl_stats, Ref, sys:statistics(Task_Pid, Flag)};
+
+        {?DAG_TOKEN, ?CTL_TOKEN, install_trace_fn, FInfo, {Ref, From}} -> From ! {node_ctl_install_trace_fn, Ref, sys:install(Task_Pid, FInfo)};
+        {?DAG_TOKEN, ?CTL_TOKEN, remove_trace_fn, FInfo, {Ref, From}}  -> From ! {node_ctl_remove_trace_fn,  Ref, sys:remove(Task_Pid, FInfo)};
 
         %% All others are unknown commands, just unqueue them.
         _Skip_Unknown_Msgs                -> do_nothing
     end,
     node_ctl_loop(Coop_Node_State).
 
-
 node_clone(#coop_node_state{} = _Coop_Node_State) -> ok.
-
-node_trace  (Task_Pid, Trace_Pid) -> erlang:trace(Task_Pid, true,  trace_options(Trace_Pid)).
-node_untrace(Task_Pid, Trace_Pid) -> erlang:trace(Task_Pid, false, trace_options(Trace_Pid)).
-
 trace_options(Tracer_Pid) -> [{tracer, Tracer_Pid}, send, 'receive', procs, timestamp].
 
     
