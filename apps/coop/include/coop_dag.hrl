@@ -14,6 +14,10 @@
 -define(DATA_TOKEN, '$$_DATA').
 -define(CTL_TOKEN,  '$$_CTL').
 
+-define(SEND_CTL_MSG(__Coop_Node, __Ctl_Msg),
+        {coop_node, __Ctl_Pid, __Task_Pid} = __Coop_Node,
+        __Ctl_Pid ! {?DAG_TOKEN, ?CTL_TOKEN, __Ctl_Msg}).
+
 %%----------------------------------------------------------
 %% Old code that may be eliminated soon
 %%----------------------------------------------------------

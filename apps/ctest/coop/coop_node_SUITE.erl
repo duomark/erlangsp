@@ -100,16 +100,14 @@ node_ctl_kill_two_proc(_Config) ->
 
 node_ctl_stop_one_proc(_Config) ->
     Args = [Kill_Switch, _Node_Fn] = create_new_coop_node_args(),
-    {coop_node, Node_Ctl_Pid, Node_Task_Pid} = apply(?TM, new, Args),
+    Coop_Node = {coop_node, Node_Ctl_Pid, Node_Task_Pid} = apply(?TM, new, Args),
     true = is_process_alive(Node_Ctl_Pid),
     true = is_process_alive(Node_Task_Pid),
-    ?TM:node_ctl_stop(Node_Ctl_Pid),
+    ?TM:node_ctl_stop(Coop_Node),
     timer:sleep(50),
     false = is_process_alive(Node_Ctl_Pid),
     false = is_process_alive(Node_Task_Pid),
     false = is_process_alive(Kill_Switch).
-
-%%    coop_node:node_ctl_trace(Node_Ctl_Pid),
 
 %%----------------------------------------------------------------------
 %% Function Tasks
@@ -130,19 +128,22 @@ get_result_data(Pid) ->
 
 setup_no_downstream() ->    
     Args = [_Kill_Switch, _Node_Fn] = create_new_coop_node_args(),
-    {coop_node, _Node_Ctl_Pid, Node_Task_Pid} = apply(?TM, new, Args),
+    Coop_Node = {coop_node, _Node_Ctl_Pid, Node_Task_Pid} = apply(?TM, new, Args),
     [] = ?TM:node_task_get_downstream_pids(Node_Task_Pid),
-    Node_Task_Pid.
+    Coop_Node.
 
 setup_no_downstream(Dist_Type) ->    
     Args = [_Kill_Switch, _Node_Fn, Dist_Type] = create_new_coop_node_args(Dist_Type),
-    {coop_node, _Node_Ctl_Pid, Node_Task_Pid} = apply(?TM, new, Args),
+    Coop_Node = {coop_node, _Node_Ctl_Pid, Node_Task_Pid} = apply(?TM, new, Args),
     [] = ?TM:node_task_get_downstream_pids(Node_Task_Pid),
-    Node_Task_Pid.
+    Coop_Node.
     
 task_compute_one(_Config) ->
-    Node_Task_Pid = setup_no_downstream(),
-    
+    {coop_node, _Node_Ctl_Pid, Node_Task_Pid} = setup_no_downstream(),
+
+    ?TM:node_task_add_downstream_pids(Node_Task_Pid, []),
+    [] = ?TM:node_task_get_downstream_pids(Node_Task_Pid),
+
     Receiver = [self()],
     ?TM:node_task_add_downstream_pids(Node_Task_Pid, Receiver),
     Receiver = ?TM:node_task_get_downstream_pids(Node_Task_Pid),
@@ -151,7 +152,7 @@ task_compute_one(_Config) ->
     15 = receive Data -> Data end.
 
 task_compute_three_round_robin(_Config) ->
-    Node_Task_Pid = setup_no_downstream(),
+    {coop_node, _Node_Ctl_Pid, Node_Task_Pid} = setup_no_downstream(),
     Receivers = [A,B,C] = [proc_lib:spawn_link(?MODULE, report_result, [[]])
                            || _N <- lists:seq(1,3)],
     ?TM:node_task_add_downstream_pids(Node_Task_Pid, [A]),
@@ -182,7 +183,7 @@ task_compute_three_round_robin(_Config) ->
     [none, 21, 18] = [get_result_data(Pid) || Pid <- Receivers].
 
 task_compute_three_broadcast(_Config) ->
-    Node_Task_Pid = setup_no_downstream(broadcast),
+    {coop_node, _Node_Ctl_Pid, Node_Task_Pid} = setup_no_downstream(broadcast),
     Receivers = [A,B,C] = [proc_lib:spawn_link(?MODULE, report_result, [[]])
                            || _N <- lists:seq(1,3)],
     ?TM:node_task_add_downstream_pids(Node_Task_Pid, [A]),
@@ -200,7 +201,7 @@ task_compute_three_broadcast(_Config) ->
     [18, 18, 18] = [get_result_data(Pid) || Pid <- Receivers].
 
 task_compute_random(_Config) ->
-    Node_Task_Pid = setup_no_downstream(random),
+    {coop_node, _Node_Ctl_Pid, Node_Task_Pid} = setup_no_downstream(random),
     Receivers = [proc_lib:spawn_link(?MODULE, report_result, [[]])
                  || _N <- lists:seq(1,5)],
     ?TM:node_task_add_downstream_pids(Node_Task_Pid, Receivers),
@@ -232,7 +233,7 @@ task_compute_random(_Config) ->
     ets:delete(Ets_Name).
 
 sys_suspend(_Config) ->
-    Node_Task_Pid = setup_no_downstream(),
+    Coop_Node = {coop_node, _Node_Ctl_Pid, Node_Task_Pid} = setup_no_downstream(),
     Receiver = [self()],
     ?TM:node_task_add_downstream_pids(Node_Task_Pid, Receiver),
     Receiver = ?TM:node_task_get_downstream_pids(Node_Task_Pid),
@@ -242,38 +243,48 @@ sys_suspend(_Config) ->
     15 = receive Data1 -> Data1 end,
     
     %% Suspend message handling and get no result...
-    sys:suspend(Node_Task_Pid),
+    ?TM:node_ctl_suspend(Coop_Node),
+    timer:sleep(50),
     ?TM:node_task_deliver_data(Node_Task_Pid, 5),
     0 = receive Data2 -> Data2 after 1000 -> 0 end,
     true = is_process_alive(Node_Task_Pid),
 
     %% Resume and result appears.
-    sys:resume(Node_Task_Pid),
+    ?TM:node_ctl_resume(Coop_Node),
     15 = receive Data3 -> Data3 after 100 -> 0 end.
 
 sys_format(_Config) ->
-    Node_Task_Pid = setup_no_downstream(random),
+    Coop_Node = {coop_node, _Node_Ctl_Pid, Node_Task_Pid} = setup_no_downstream(random),
 
     %% Get the custom status information...
     Custom_Running_Fmt = get_custom_fmt(sys:get_status(Node_Task_Pid)),
     "Status for coop_node" = proplists:get_value(header, Custom_Running_Fmt),
     Custom_Running_Props = proplists:get_value(data, Custom_Running_Fmt),
-    running = proplists:get_value("Status", Custom_Running_Props),
-    {coop_node_SUITE,x3} = proplists:get_value("Node_Fn", Custom_Running_Props),
-    0 = proplists:get_value("Downstream_Pid_Count", Custom_Running_Props),
-    random = proplists:get_value("Data_Flow_Method", Custom_Running_Props),
+    [running, {coop_node_SUITE,x3}, 0, random]
+        = [proplists:get_value(P, Custom_Running_Props)
+           || P <- ["Status", "Node_Fn", "Downstream_Pid_Count", "Data_Flow_Method"]],
 
     [A,B,C] = [proc_lib:spawn_link(?MODULE, report_result, [[]]) || _N <- lists:seq(1,3)],
     ?TM:node_task_add_downstream_pids(Node_Task_Pid, [A,B,C]),
     [A,B,C] = ?TM:node_task_get_downstream_pids(Node_Task_Pid),
 
-    sys:suspend(Node_Task_Pid),
+    ?TM:node_ctl_suspend(Coop_Node),
+    timer:sleep(50),
     Custom_Suspended_Fmt = get_custom_fmt(sys:get_status(Node_Task_Pid)),
     Custom_Suspended_Props = proplists:get_value(data, Custom_Suspended_Fmt),
-    suspended = proplists:get_value("Status", Custom_Suspended_Props),
-    {coop_node_SUITE,x3} = proplists:get_value("Node_Fn", Custom_Suspended_Props),
-    3 = proplists:get_value("Downstream_Pid_Count", Custom_Suspended_Props),
-    random = proplists:get_value("Data_Flow_Method", Custom_Suspended_Props).
+    [suspended, {coop_node_SUITE,x3}, 3, random]
+        = [proplists:get_value(P, Custom_Suspended_Props)
+           || P <- ["Status", "Node_Fn", "Downstream_Pid_Count", "Data_Flow_Method"]],
+    
+    ?TM:node_ctl_resume(Coop_Node),
+    timer:sleep(50),
+    New_Custom_Running_Fmt = get_custom_fmt(sys:get_status(Node_Task_Pid)),
+    "Status for coop_node" = proplists:get_value(header, New_Custom_Running_Fmt),
+    New_Custom_Running_Props = proplists:get_value(data, New_Custom_Running_Fmt),
+    [running, {coop_node_SUITE,x3}, 3, random]
+        = [proplists:get_value(P, New_Custom_Running_Props)
+           || P <- ["Status", "Node_Fn", "Downstream_Pid_Count", "Data_Flow_Method"]].
+    
 
 get_custom_fmt(Status) -> lists:nth(5, element(4, Status)).
 
@@ -289,7 +300,7 @@ send_data(N, Node_Task_Pid) ->
      end || _N <- lists:seq(1,N)].
     
 sys_statistics(_Config) ->
-    Node_Task_Pid = setup_no_downstream(),
+    {coop_node, _Node_Ctl_Pid, Node_Task_Pid} = setup_no_downstream(),
     ok = sys:statistics(Node_Task_Pid, true),
     {ok, Props1} = sys:statistics(Node_Task_Pid, get),
     [0,0] = [proplists:get_value(P, Props1) || P <- [messages_in, messages_out]],
@@ -299,7 +310,7 @@ sys_statistics(_Config) ->
     ok = sys:statistics(Node_Task_Pid, false).
 
 sys_log(_Config) ->
-    Node_Task_Pid = setup_no_downstream(),
+    {coop_node, _Node_Ctl_Pid, Node_Task_Pid} = setup_no_downstream(),
     ok = sys:log(Node_Task_Pid, true),
     {ok, []} = sys:log(Node_Task_Pid, get),
     send_data(6, Node_Task_Pid),
@@ -311,11 +322,8 @@ sys_log(_Config) ->
     Outs = [{Type,Num} || {{Type,Num,_Pid}, _Flow, _Fun} <- Events],
     sys:log(Node_Task_Pid, false).
 
-    %% sys:trace(Node_Task_Pid, true),
-    %% sys:trace(Node_Task_Pid, false),
-
 sys_install(_Config) ->
-    Node_Task_Pid = setup_no_downstream(),
+    {coop_node, _Node_Ctl_Pid, Node_Task_Pid} = setup_no_downstream(),
     Pid = spawn_link(fun() -> receive {15, 30} -> ok;
                                       Bad_Result -> exit(Bad_Result)
                               after 2000 -> exit(timeout)
@@ -338,3 +346,7 @@ sys_install(_Config) ->
     ok = sys:install(Node_Task_Pid, {F, {0,0,0}}),
     send_data(5, Node_Task_Pid),
     timer:sleep(100).
+
+
+%% sys:trace(Node_Task_Pid, true),
+%% sys:trace(Node_Task_Pid, false),

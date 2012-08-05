@@ -15,6 +15,7 @@
 -export([
          new/2, new/3,
          node_ctl_clone/1, node_ctl_stop/1,
+         node_ctl_suspend/1, node_ctl_resume/1,
          node_ctl_trace/1, node_ctl_untrace/1,
          node_task_get_downstream_pids/1,
          node_task_add_downstream_pids/2,
@@ -138,12 +139,14 @@ new(Kill_Switch, {_Task_Mod, _Task_Fn} = Node_Fn, Data_Flow_Method)
     link_to_kill_switch(Kill_Switch, [Ctl_Pid, Task_Pid, Trace_Pid, Log_Pid, Reflect_Pid]),
     {coop_node, Ctl_Pid, Task_Pid}.
 
-node_ctl_clone  (Node_Ctl_Pid) -> Node_Ctl_Pid ! {?DAG_TOKEN, ?CTL_TOKEN, clone}.
-node_ctl_stop   (Node_Ctl_Pid) -> Node_Ctl_Pid ! {?DAG_TOKEN, ?CTL_TOKEN, stop}.
-node_ctl_trace  (Node_Ctl_Pid) -> Node_Ctl_Pid ! {?DAG_TOKEN, ?CTL_TOKEN, trace}.
-node_ctl_untrace(Node_Ctl_Pid) -> Node_Ctl_Pid ! {?DAG_TOKEN, ?CTL_TOKEN, untrace}.
-                               
-    
+node_ctl_clone  (Coop_Node) -> ?SEND_CTL_MSG(Coop_Node, clone).
+node_ctl_stop   (Coop_Node) -> ?SEND_CTL_MSG(Coop_Node, stop).
+node_ctl_suspend(Coop_Node) -> ?SEND_CTL_MSG(Coop_Node, suspend).
+node_ctl_resume (Coop_Node) -> ?SEND_CTL_MSG(Coop_Node, resume).
+node_ctl_trace  (Coop_Node) -> ?SEND_CTL_MSG(Coop_Node, trace).
+node_ctl_untrace(Coop_Node) -> ?SEND_CTL_MSG(Coop_Node, untrace).
+
+
 -define(SYNC_RECEIVE_TIME, 2000).
 
 node_task_get_downstream_pids(Node_Task_Pid) ->
@@ -176,10 +179,17 @@ node_ctl_loop(Kill_Switch, Task_Pid, Node_Fn, Trace_Pid, Log_Pid, Reflect_Pid) -
 
 node_ctl_loop(#coop_node_state{task=Task_Pid, trace=Trace_Pid} = Coop_Node_State) ->
     receive
+        %% Commands for controlling the entire Coop_Node element...
         {?DAG_TOKEN, ?CTL_TOKEN, stop}    -> exit(stopped);
         {?DAG_TOKEN, ?CTL_TOKEN, clone}   -> node_clone(Coop_Node_State);
+
+        %% Commands for controlling the Task_Pid...
+        {?DAG_TOKEN, ?CTL_TOKEN, suspend} -> sys:suspend(Task_Pid);
+        {?DAG_TOKEN, ?CTL_TOKEN, resume}  -> sys:resume(Task_Pid);
         {?DAG_TOKEN, ?CTL_TOKEN, trace}   -> node_trace(Task_Pid, Trace_Pid);
         {?DAG_TOKEN, ?CTL_TOKEN, untrace} -> node_untrace(Task_Pid, Trace_Pid);
+
+        %% All others are unknown commands, just unqueue them.
         _Skip_Unknown_Msgs                -> do_nothing
     end,
     node_ctl_loop(Coop_Node_State).
