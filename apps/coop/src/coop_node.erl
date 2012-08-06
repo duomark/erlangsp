@@ -16,7 +16,7 @@
          new/2, new/3,
          node_ctl_clone/1, node_ctl_stop/1,
          node_ctl_suspend/1, node_ctl_resume/1, node_ctl_trace/1, node_ctl_untrace/1,
-         node_ctl_stats/3, node_ctl_log/3,
+         node_ctl_stats/3, node_ctl_log/3, node_ctl_log_to_file/3,
          node_ctl_install_trace_fn/3, node_ctl_remove_trace_fn/3,
          node_task_get_downstream_pids/1, node_task_add_downstream_pids/2,
          node_task_deliver_data/2
@@ -158,6 +158,11 @@ node_ctl_log(Coop_Node, Flag, From) ->
     Ref = make_ref(),
     ?SEND_CTL_MSG(Coop_Node, log, Flag, {Ref, From}),
     wait_ctl_response(node_ctl_log, Ref).
+    
+node_ctl_log_to_file(Coop_Node, File, From) ->
+    Ref = make_ref(),
+    ?SEND_CTL_MSG(Coop_Node, log_to_file, File, {Ref, From}),
+    wait_ctl_response(node_ctl_log_to_file, Ref).
 
 node_ctl_stats(Coop_Node, Flag, From) ->
     Ref = make_ref(),
@@ -214,8 +219,9 @@ node_ctl_loop(#coop_node_state{task=Task_Pid, trace=Trace_Pid} = Coop_Node_State
         {?DAG_TOKEN, ?CTL_TOKEN, trace   } -> erlang:trace(Task_Pid, true,  trace_options(Trace_Pid));
         {?DAG_TOKEN, ?CTL_TOKEN, untrace } -> erlang:trace(Task_Pid, false, trace_options(Trace_Pid));
 
-        {?DAG_TOKEN, ?CTL_TOKEN, log,      Flag,  {Ref, From}} -> From ! {node_ctl_log, Ref, sys:log(Task_Pid, Flag)};
-        {?DAG_TOKEN, ?CTL_TOKEN, stats,    Flag,  {Ref, From}} -> From ! {node_ctl_stats, Ref, sys:statistics(Task_Pid, Flag)};
+        {?DAG_TOKEN, ?CTL_TOKEN, log,         Flag,  {Ref, From}} -> From ! {node_ctl_log, Ref, sys:log(Task_Pid, Flag)};
+        {?DAG_TOKEN, ?CTL_TOKEN, log_to_file, File,  {Ref, From}} -> From ! {node_ctl_log_to_file, Ref, sys:log_to_file(Task_Pid, File)};
+        {?DAG_TOKEN, ?CTL_TOKEN, stats,       Flag,  {Ref, From}} -> From ! {node_ctl_stats, Ref, sys:statistics(Task_Pid, Flag)};
 
         {?DAG_TOKEN, ?CTL_TOKEN, install_trace_fn, FInfo, {Ref, From}} -> From ! {node_ctl_install_trace_fn, Ref, sys:install(Task_Pid, FInfo)};
         {?DAG_TOKEN, ?CTL_TOKEN, remove_trace_fn, FInfo, {Ref, From}}  -> From ! {node_ctl_remove_trace_fn,  Ref, sys:remove(Task_Pid, FInfo)};

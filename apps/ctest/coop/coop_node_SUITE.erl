@@ -311,6 +311,7 @@ sys_statistics(_Config) ->
 
 sys_log(_Config) ->
     Coop_Node = {coop_node, _Node_Ctl_Pid, Node_Task_Pid} = setup_no_downstream(),
+    %% ok = ?TM:node_ctl_log_to_file(Coop_Node, "./coop.dump", self())
     ok = ?TM:node_ctl_log(Coop_Node, true, self()),
     {ok, []} = ?TM:node_ctl_log(Coop_Node, get, self()),
     send_data(6, Node_Task_Pid),
@@ -320,7 +321,8 @@ sys_log(_Config) ->
     Ins = [{Type,Num} || {{Type,Num}, _Flow, _Fun} <- Events],
     Outs = lists:duplicate(5,{out,15}),
     Outs = [{Type,Num} || {{Type,Num,_Pid}, _Flow, _Fun} <- Events],
-    ?TM:node_ctl_log(Coop_Node, false, self()).
+    ok = ?TM:node_ctl_log(Coop_Node, false, self()).
+    %% ok = ?TM:node_ctl_log_to_file(Coop_Node, false, self()).
 
 sys_install(_Config) ->
     Coop_Node = {coop_node, _Node_Ctl_Pid, Node_Task_Pid} = setup_no_downstream(),
@@ -358,8 +360,5 @@ sys_install(_Config) ->
     timer:sleep(50),
     ok = ?TM:node_ctl_remove_trace_fn(Coop_Node, F, self()),
     ?TM:node_task_deliver_data(Node_Task_Pid, 7),
-    receive Data -> Pid ! {data, Data} after 50 -> 0 end,
-    timer:sleep(2000).
-
-%% sys:trace(Node_Task_Pid, true),
-%% sys:trace(Node_Task_Pid, false),
+    _ = receive Data -> Pid ! {data, Data} after 50 -> 0 end,
+    timer:sleep(1000).
