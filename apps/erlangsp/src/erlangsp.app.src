@@ -6,7 +6,7 @@
   {modules, []},
   {registered, []},
   {applications, [kernel, stdlib, sasl, gs, appmon]},
-  {included_applications, []},
+  {included_applications, [coop]},
   {mod, {erlangsp_app, []}},
   {env, []}
 ]}.
