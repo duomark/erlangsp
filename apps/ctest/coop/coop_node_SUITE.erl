@@ -128,37 +128,37 @@ get_result_data(Pid) ->
 
 setup_no_downstream() ->    
     Args = [_Kill_Switch, _Node_Fn] = create_new_coop_node_args(),
-    Coop_Node = {coop_node, _Node_Ctl_Pid, Node_Task_Pid} = apply(?TM, new, Args),
-    [] = ?TM:node_task_get_downstream_pids(Node_Task_Pid),
+    Coop_Node = apply(?TM, new, Args),
+    [] = ?TM:node_task_get_downstream_pids(Coop_Node),
     Coop_Node.
 
 setup_no_downstream(Dist_Type) ->    
     Args = [_Kill_Switch, _Node_Fn, Dist_Type] = create_new_coop_node_args(Dist_Type),
-    Coop_Node = {coop_node, _Node_Ctl_Pid, Node_Task_Pid} = apply(?TM, new, Args),
-    [] = ?TM:node_task_get_downstream_pids(Node_Task_Pid),
+    Coop_Node = apply(?TM, new, Args),
+    [] = ?TM:node_task_get_downstream_pids(Coop_Node),
     Coop_Node.
     
 task_compute_one(_Config) ->
-    {coop_node, _Node_Ctl_Pid, Node_Task_Pid} = setup_no_downstream(),
+    Coop_Node = {coop_node, _Node_Ctl_Pid, Node_Task_Pid} = setup_no_downstream(),
 
-    ?TM:node_task_add_downstream_pids(Node_Task_Pid, []),
-    [] = ?TM:node_task_get_downstream_pids(Node_Task_Pid),
+    ?TM:node_task_add_downstream_pids(Coop_Node, []),
+    [] = ?TM:node_task_get_downstream_pids(Coop_Node),
 
     Receiver = [self()],
-    ?TM:node_task_add_downstream_pids(Node_Task_Pid, Receiver),
-    Receiver = ?TM:node_task_get_downstream_pids(Node_Task_Pid),
+    ?TM:node_task_add_downstream_pids(Coop_Node, Receiver),
+    Receiver = ?TM:node_task_get_downstream_pids(Coop_Node),
 
     ?TM:node_task_deliver_data(Node_Task_Pid, 5),
     15 = receive Data -> Data end.
 
 task_compute_three_round_robin(_Config) ->
-    {coop_node, _Node_Ctl_Pid, Node_Task_Pid} = setup_no_downstream(),
+    Coop_Node = {coop_node, _Node_Ctl_Pid, Node_Task_Pid} = setup_no_downstream(),
     Receivers = [A,B,C] = [proc_lib:spawn_link(?MODULE, report_result, [[]])
                            || _N <- lists:seq(1,3)],
-    ?TM:node_task_add_downstream_pids(Node_Task_Pid, [A]),
-    [A] = ?TM:node_task_get_downstream_pids(Node_Task_Pid),
-    ?TM:node_task_add_downstream_pids(Node_Task_Pid, [B,C]),
-    Receivers = ?TM:node_task_get_downstream_pids(Node_Task_Pid),
+    ?TM:node_task_add_downstream_pids(Coop_Node, [A]),
+    [A] = ?TM:node_task_get_downstream_pids(Coop_Node),
+    ?TM:node_task_add_downstream_pids(Coop_Node, [B,C]),
+    Receivers = ?TM:node_task_get_downstream_pids(Coop_Node),
     [true = is_process_alive(Pid) || Pid <- Receivers],
 
     ?TM:node_task_deliver_data(Node_Task_Pid, 5),
@@ -183,13 +183,13 @@ task_compute_three_round_robin(_Config) ->
     [none, 21, 18] = [get_result_data(Pid) || Pid <- Receivers].
 
 task_compute_three_broadcast(_Config) ->
-    {coop_node, _Node_Ctl_Pid, Node_Task_Pid} = setup_no_downstream(broadcast),
+    Coop_Node = {coop_node, _Node_Ctl_Pid, Node_Task_Pid} = setup_no_downstream(broadcast),
     Receivers = [A,B,C] = [proc_lib:spawn_link(?MODULE, report_result, [[]])
                            || _N <- lists:seq(1,3)],
-    ?TM:node_task_add_downstream_pids(Node_Task_Pid, [A]),
-    [A] = ?TM:node_task_get_downstream_pids(Node_Task_Pid),
-    ?TM:node_task_add_downstream_pids(Node_Task_Pid, [B,C]),
-    Receivers = ?TM:node_task_get_downstream_pids(Node_Task_Pid),
+    ?TM:node_task_add_downstream_pids(Coop_Node, [A]),
+    [A] = ?TM:node_task_get_downstream_pids(Coop_Node),
+    ?TM:node_task_add_downstream_pids(Coop_Node, [B,C]),
+    Receivers = ?TM:node_task_get_downstream_pids(Coop_Node),
     [true = is_process_alive(Pid) || Pid <- Receivers],
 
     ?TM:node_task_deliver_data(Node_Task_Pid, 5),
@@ -201,11 +201,11 @@ task_compute_three_broadcast(_Config) ->
     [18, 18, 18] = [get_result_data(Pid) || Pid <- Receivers].
 
 task_compute_random(_Config) ->
-    {coop_node, _Node_Ctl_Pid, Node_Task_Pid} = setup_no_downstream(random),
+    Coop_Node = {coop_node, _Node_Ctl_Pid, Node_Task_Pid} = setup_no_downstream(random),
     Receivers = [proc_lib:spawn_link(?MODULE, report_result, [[]])
                  || _N <- lists:seq(1,5)],
-    ?TM:node_task_add_downstream_pids(Node_Task_Pid, Receivers),
-    Receivers = ?TM:node_task_get_downstream_pids(Node_Task_Pid),
+    ?TM:node_task_add_downstream_pids(Coop_Node, Receivers),
+    Receivers = ?TM:node_task_get_downstream_pids(Coop_Node),
     [true = is_process_alive(Pid) || Pid <- Receivers],
 
     Ets_Name = crypto_rand_test,
@@ -235,8 +235,8 @@ task_compute_random(_Config) ->
 sys_suspend(_Config) ->
     Coop_Node = {coop_node, _Node_Ctl_Pid, Node_Task_Pid} = setup_no_downstream(),
     Receiver = [self()],
-    ?TM:node_task_add_downstream_pids(Node_Task_Pid, Receiver),
-    Receiver = ?TM:node_task_get_downstream_pids(Node_Task_Pid),
+    ?TM:node_task_add_downstream_pids(Coop_Node, Receiver),
+    Receiver = ?TM:node_task_get_downstream_pids(Coop_Node),
 
     %% Verify it computes normally...
     ?TM:node_task_deliver_data(Node_Task_Pid, 5),
@@ -258,15 +258,15 @@ sys_format(_Config) ->
 
     %% Get the custom status information...
     Custom_Running_Fmt = get_custom_fmt(sys:get_status(Node_Task_Pid)),
-    "Status for coop_node" = proplists:get_value(header, Custom_Running_Fmt),
-    Custom_Running_Props = proplists:get_value(data, Custom_Running_Fmt),
+    ["Status for coop_node", Custom_Running_Props]
+        = [proplists:get_value(P, Custom_Running_Fmt) || P <- [header, data]],
     [running, {coop_node_SUITE,x3}, 0, random]
         = [proplists:get_value(P, Custom_Running_Props)
            || P <- ["Status", "Node_Fn", "Downstream_Pid_Count", "Data_Flow_Method"]],
 
     [A,B,C] = [proc_lib:spawn_link(?MODULE, report_result, [[]]) || _N <- lists:seq(1,3)],
-    ?TM:node_task_add_downstream_pids(Node_Task_Pid, [A,B,C]),
-    [A,B,C] = ?TM:node_task_get_downstream_pids(Node_Task_Pid),
+    ?TM:node_task_add_downstream_pids(Coop_Node, [A,B,C]),
+    [A,B,C] = ?TM:node_task_get_downstream_pids(Coop_Node),
 
     ?TM:node_ctl_suspend(Coop_Node),
     timer:sleep(50),
@@ -279,8 +279,8 @@ sys_format(_Config) ->
     ?TM:node_ctl_resume(Coop_Node),
     timer:sleep(50),
     New_Custom_Running_Fmt = get_custom_fmt(sys:get_status(Node_Task_Pid)),
-    "Status for coop_node" = proplists:get_value(header, New_Custom_Running_Fmt),
-    New_Custom_Running_Props = proplists:get_value(data, New_Custom_Running_Fmt),
+    ["Status for coop_node", New_Custom_Running_Props]
+        = [proplists:get_value(P, New_Custom_Running_Fmt) || P <- [header, data]],
     [running, {coop_node_SUITE,x3}, 3, random]
         = [proplists:get_value(P, New_Custom_Running_Props)
            || P <- ["Status", "Node_Fn", "Downstream_Pid_Count", "Data_Flow_Method"]].
@@ -288,10 +288,10 @@ sys_format(_Config) ->
 
 get_custom_fmt(Status) -> lists:nth(5, element(4, Status)).
 
-send_data(N, Node_Task_Pid) ->
+send_data(N, {coop_node, _Node_Ctl_Pid, Node_Task_Pid} = Coop_Node) ->
     Receiver = [self()],
-    ?TM:node_task_add_downstream_pids(Node_Task_Pid, Receiver),
-    Receiver = ?TM:node_task_get_downstream_pids(Node_Task_Pid),
+    ?TM:node_task_add_downstream_pids(Coop_Node, Receiver),
+    Receiver = ?TM:node_task_get_downstream_pids(Coop_Node),
 
     %% Verify it computes normally...
     [begin
@@ -300,21 +300,21 @@ send_data(N, Node_Task_Pid) ->
      end || _N <- lists:seq(1,N)].
     
 sys_statistics(_Config) ->
-    Coop_Node = {coop_node, _Node_Ctl_Pid, Node_Task_Pid} = setup_no_downstream(),
+    Coop_Node = setup_no_downstream(),
     ok = ?TM:node_ctl_stats(Coop_Node, true, self()),
     {ok, Props1} = ?TM:node_ctl_stats(Coop_Node, get, self()),
     [0,0] = [proplists:get_value(P, Props1) || P <- [messages_in, messages_out]],
-    send_data(10, Node_Task_Pid),
+    send_data(10, Coop_Node),
     {ok, Props2} = ?TM:node_ctl_stats(Coop_Node, get, self()),
     [12,10] = [proplists:get_value(P, Props2) || P <- [messages_in, messages_out]],
     ok = ?TM:node_ctl_stats(Coop_Node, false, self()).
 
 sys_log(_Config) ->
-    Coop_Node = {coop_node, _Node_Ctl_Pid, Node_Task_Pid} = setup_no_downstream(),
+    Coop_Node = setup_no_downstream(),
     %% ok = ?TM:node_ctl_log_to_file(Coop_Node, "./coop.dump", self())
     ok = ?TM:node_ctl_log(Coop_Node, true, self()),
     {ok, []} = ?TM:node_ctl_log(Coop_Node, get, self()),
-    send_data(6, Node_Task_Pid),
+    send_data(6, Coop_Node),
     {ok, Events} = ?TM:node_ctl_log(Coop_Node, get, self()),
     10 = length(Events),
     Ins = lists:duplicate(5,{in,5}),
@@ -356,7 +356,7 @@ sys_install(_Config) ->
         end,
     ok = ?TM:node_ctl_install_trace_fn(Coop_Node, {F, {0,0,0}}, self()),
 
-    send_data(3, Node_Task_Pid),
+    send_data(3, Coop_Node),
     timer:sleep(50),
     ok = ?TM:node_ctl_remove_trace_fn(Coop_Node, F, self()),
     ?TM:node_task_deliver_data(Node_Task_Pid, 7),

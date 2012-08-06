@@ -13,20 +13,22 @@
 
 %% Graph API
 -export([
+         %% Create coop_node instances...
          new/2, new/3,
+
+         %% Send commands to coop_node control process...
          node_ctl_clone/1, node_ctl_stop/1,
          node_ctl_suspend/1, node_ctl_resume/1, node_ctl_trace/1, node_ctl_untrace/1,
          node_ctl_stats/3, node_ctl_log/3, node_ctl_log_to_file/3,
          node_ctl_install_trace_fn/3, node_ctl_remove_trace_fn/3,
+
+         %% Send commands to coop_node data task process...
          node_task_get_downstream_pids/1, node_task_add_downstream_pids/2,
          node_task_deliver_data/2
         ]).
 
 %% Internal functions for spawned processes
--export([
-         echo_loop/1, link_loop/0, make_kill_switch/0, node_ctl_loop/6
-        ]).
-
+-export([echo_loop/1, link_loop/0, make_kill_switch/0]).
 
 %%----------------------------------------------------------------------
 %% A Coop Node is a single worker element of a Coop. Every worker
@@ -42,16 +44,125 @@
 %%----------------------------------------------------------------------
 
 -include("coop_dag.hrl").
+-include("coop_node.hrl").
 
--record(coop_node_state, {
-          kill_switch :: pid(),
-          ctl         :: pid(),
-          task        :: pid(),
-          task_fn     :: task_function(),
-          trace       :: pid(),
-          log         :: pid(),
-          reflect     :: pid()
-         }).
+%%----------------------------------------------------------------------
+%% Create a new coop_node. A coop_node is represented by a pair of
+%% pids: a control process and a data task process.
+%%----------------------------------------------------------------------
+
+-spec new(pid(), task_function())
+         -> {coop_node, Ctl_Proc, Data_Proc} when Ctl_Proc :: pid(), Data_Proc :: pid().
+-spec new(pid(), task_function(), data_flow_method())
+         -> {coop_node, Ctl_Proc, Data_Proc} when Ctl_Proc :: pid(), Data_Proc :: pid().
+
+%% Round robin is default for downstream data distribution.
+%% Optimized for special case of 1 downstream pid.
+new(Kill_Switch, Node_Fn) ->
+    new(Kill_Switch, Node_Fn, round_robin).
+
+%% Override downstream data distribution.
+new(Kill_Switch, {_Task_Mod, _Task_Fn} = Node_Fn, Data_Flow_Method)
+  when is_atom(_Task_Mod), is_atom(_Task_Fn),
+       (       Data_Flow_Method =:= random
+        orelse Data_Flow_Method =:= round_robin
+        orelse Data_Flow_Method =:= broadcast   ) ->
+
+    %% Start the data task process...
+    Task_Pid = make_data_task_pid(Node_Fn, Data_Flow_Method),
+
+    %% Start support function processes...
+    {Trace_Pid, Log_Pid, Reflect_Pid} = make_support_pids(),
+
+    %% Start the control process...
+    Ctl_Args = [Kill_Switch, Task_Pid, Node_Fn, Trace_Pid, Log_Pid, Reflect_Pid],
+    Ctl_Pid = proc_lib:spawn(coop_node_ctl_rcv, node_ctl_loop, Ctl_Args),
+
+    %% Link all component pids to the Kill_Switch pid and return the Ctl and Data pids.
+    link_to_kill_switch(Kill_Switch, [Ctl_Pid, Task_Pid, Trace_Pid, Log_Pid, Reflect_Pid]),
+    {coop_node, Ctl_Pid, Task_Pid}.
+
+make_data_task_pid(Node_Fn, Data_Flow_Method) ->
+    Worker_Set = case Data_Flow_Method of random -> {}; _Other -> queue:new() end,
+    Task_Args = [Node_Fn, Worker_Set, Data_Flow_Method],
+    proc_lib:spawn(coop_node_data_rcv, node_data_loop, Task_Args).
+
+make_support_pids() ->
+    Trace_Pid = proc_lib:spawn(?MODULE, echo_loop, ["TRC"]),
+    [Log_Pid, Reflect_Pid]
+        = [proc_lib:spawn(?MODULE, echo_loop, [Type]) || Type <- ["LOG", "RFL"]],
+    {Trace_Pid, Log_Pid, Reflect_Pid}.
+
+link_to_kill_switch(Kill_Switch, Procs) when is_list(Procs) ->
+    Kill_Switch ! {?DAG_TOKEN, ?CTL_TOKEN, {link, Procs}}.
+
+
+%%----------------------------------------------------------------------
+%% Control process interface...
+%%----------------------------------------------------------------------
+-define(SYNC_RECEIVE_TIME, 2000).
+
+node_ctl_clone  (Coop_Node) -> ?SEND_CTL_MSG(Coop_Node, clone).
+node_ctl_stop   (Coop_Node) -> ?SEND_CTL_MSG(Coop_Node, stop).
+node_ctl_suspend(Coop_Node) -> ?SEND_CTL_MSG(Coop_Node, suspend).
+node_ctl_resume (Coop_Node) -> ?SEND_CTL_MSG(Coop_Node, resume).
+node_ctl_trace  (Coop_Node) -> ?SEND_CTL_MSG(Coop_Node, trace).
+node_ctl_untrace(Coop_Node) -> ?SEND_CTL_MSG(Coop_Node, untrace).
+
+wait_ctl_response(Type, Ref) ->
+    receive {Type, Ref, Info} -> Info
+    after ?SYNC_RECEIVE_TIME  -> timeout
+    end.
+    
+node_ctl_log(Coop_Node, Flag, From) ->
+    Ref = make_ref(),
+    ?SEND_CTL_MSG(Coop_Node, log, Flag, {Ref, From}),
+    wait_ctl_response(node_ctl_log, Ref).
+    
+node_ctl_log_to_file(Coop_Node, File, From) ->
+    Ref = make_ref(),
+    ?SEND_CTL_MSG(Coop_Node, log_to_file, File, {Ref, From}),
+    wait_ctl_response(node_ctl_log_to_file, Ref).
+
+node_ctl_stats(Coop_Node, Flag, From) ->
+    Ref = make_ref(),
+    ?SEND_CTL_MSG(Coop_Node, stats, Flag, {Ref, From}),
+    wait_ctl_response(node_ctl_stats, Ref).
+
+node_ctl_install_trace_fn(Coop_Node, {Func, Func_State}, From) ->
+    Ref = make_ref(),
+    ?SEND_CTL_MSG(Coop_Node, install_trace_fn, {Func, Func_State}, {Ref, From}),
+    wait_ctl_response(node_ctl_install_trace_fn, Ref).
+
+node_ctl_remove_trace_fn(Coop_Node, Func, From) ->
+    Ref = make_ref(),
+    ?SEND_CTL_MSG(Coop_Node, remove_trace_fn, Func, {Ref, From}),
+    wait_ctl_response(node_ctl_remove_trace_fn, Ref).
+
+%%----------------------------------------------------------------------
+%% Task process interface...
+%%----------------------------------------------------------------------
+node_task_get_downstream_pids({coop_node, _Node_Ctl_Pid, Node_Task_Pid}) ->
+    Ref = make_ref(),
+    Node_Task_Pid ! {?DAG_TOKEN, ?CTL_TOKEN, {get_downstream, {Ref, self()}}},
+    receive
+        {get_downstream, Ref, Pids} -> Pids
+    after ?SYNC_RECEIVE_TIME -> timeout
+    end.
+
+node_task_add_downstream_pids({coop_node, _Node_Ctl_Pid, Node_Task_Pid}, Pids) when is_list(Pids) ->
+    Node_Task_Pid ! {?DAG_TOKEN, ?CTL_TOKEN, {add_downstream, Pids}}.
+
+%% The downstream Pid can be either a coop_node or any other process type.
+%% We need to accept a raw Pid, rather than a Coop_Node.
+node_task_deliver_data(Node_Task_Pid, Data)
+  when is_pid(Node_Task_Pid) ->
+    Node_Task_Pid ! Data.
+
+
+%%----------------------------------------------------------------------
+%% Coop Node receive loops for support pids.
+%%----------------------------------------------------------------------
 
 -spec echo_loop(string()) -> no_return().
 -spec link_loop() -> no_return().
@@ -94,144 +205,4 @@ link_loop() ->
     end.
 
 make_kill_switch() -> proc_lib:spawn(?MODULE, link_loop, []).
-link_to_kill_switch(Kill_Switch, Procs) when is_list(Procs) ->
-    Kill_Switch ! {?DAG_TOKEN, ?CTL_TOKEN, {link, Procs}}.
 
-%%----------------------------------------------------------------------
-%% Create a new coop_node. A coop_node is represented by a pair of
-%% pids: a control process and a data task process.
-%%----------------------------------------------------------------------
-
--spec new(pid(), task_function())
-         -> {coop_node, Ctl_Proc, Data_Proc} when Ctl_Proc :: pid(), Data_Proc :: pid().
--spec new(pid(), task_function(), data_flow_method())
-         -> {coop_node, Ctl_Proc, Data_Proc} when Ctl_Proc :: pid(), Data_Proc :: pid().
--spec node_ctl_loop(pid(), pid(), task_function(), pid(), pid(), pid()) -> no_return().
--spec node_ctl_loop(#coop_node_state{}) -> no_return().
-
-%% Round robin is default for downstream data distribution.
-%% Optimized for special case of 1 downstream pid.
-new(Kill_Switch, Node_Fn) ->
-    new(Kill_Switch, Node_Fn, round_robin).
-
-%% Override downstream data distribution.
-new(Kill_Switch, {_Task_Mod, _Task_Fn} = Node_Fn, Data_Flow_Method)
-  when is_atom(_Task_Mod), is_atom(_Task_Fn),
-       (       Data_Flow_Method =:= random
-        orelse Data_Flow_Method =:= round_robin
-        orelse Data_Flow_Method =:= broadcast   ) ->
-
-    %% Start support function processes...
-    Trace_Pid = proc_lib:spawn(?MODULE, echo_loop, ["TRC"]),
-    [Log_Pid, Reflect_Pid]
-        = [proc_lib:spawn(?MODULE, echo_loop, [Type]) || Type <- ["LOG", "RFL"]],
-
-    %% Start the data task process...
-    Worker_Set = case Data_Flow_Method of random -> {}; _Other -> queue:new() end,
-    Task_Args = [Node_Fn, Worker_Set, Data_Flow_Method],
-    Task_Pid = proc_lib:spawn(coop_node_data_rcv, node_data_loop, Task_Args),
-
-    %% Start the control process...
-    Ctl_Args = [Kill_Switch, Task_Pid, Node_Fn, Trace_Pid, Log_Pid, Reflect_Pid],
-    Ctl_Pid = proc_lib:spawn(?MODULE, node_ctl_loop, Ctl_Args),
-
-    %% Link all component pids to the Kill_Switch pid and return the Ctl and Data pids.
-    link_to_kill_switch(Kill_Switch, [Ctl_Pid, Task_Pid, Trace_Pid, Log_Pid, Reflect_Pid]),
-    {coop_node, Ctl_Pid, Task_Pid}.
-
-
--define(SYNC_RECEIVE_TIME, 2000).
-
-node_ctl_clone  (Coop_Node) -> ?SEND_CTL_MSG(Coop_Node, clone).
-node_ctl_stop   (Coop_Node) -> ?SEND_CTL_MSG(Coop_Node, stop).
-node_ctl_suspend(Coop_Node) -> ?SEND_CTL_MSG(Coop_Node, suspend).
-node_ctl_resume (Coop_Node) -> ?SEND_CTL_MSG(Coop_Node, resume).
-node_ctl_trace  (Coop_Node) -> ?SEND_CTL_MSG(Coop_Node, trace).
-node_ctl_untrace(Coop_Node) -> ?SEND_CTL_MSG(Coop_Node, untrace).
-
-wait_ctl_response(Type, Ref) ->
-    receive {Type, Ref, Info} -> Info
-    after ?SYNC_RECEIVE_TIME  -> timeout
-    end.
-    
-node_ctl_log(Coop_Node, Flag, From) ->
-    Ref = make_ref(),
-    ?SEND_CTL_MSG(Coop_Node, log, Flag, {Ref, From}),
-    wait_ctl_response(node_ctl_log, Ref).
-    
-node_ctl_log_to_file(Coop_Node, File, From) ->
-    Ref = make_ref(),
-    ?SEND_CTL_MSG(Coop_Node, log_to_file, File, {Ref, From}),
-    wait_ctl_response(node_ctl_log_to_file, Ref).
-
-node_ctl_stats(Coop_Node, Flag, From) ->
-    Ref = make_ref(),
-    ?SEND_CTL_MSG(Coop_Node, stats, Flag, {Ref, From}),
-    wait_ctl_response(node_ctl_stats, Ref).
-
-node_ctl_install_trace_fn(Coop_Node, {Func, Func_State}, From) ->
-    Ref = make_ref(),
-    ?SEND_CTL_MSG(Coop_Node, install_trace_fn, {Func, Func_State}, {Ref, From}),
-    wait_ctl_response(node_ctl_install_trace_fn, Ref).
-
-node_ctl_remove_trace_fn(Coop_Node, Func, From) ->
-    Ref = make_ref(),
-    ?SEND_CTL_MSG(Coop_Node, remove_trace_fn, Func, {Ref, From}),
-    wait_ctl_response(node_ctl_remove_trace_fn, Ref).
-
-node_task_get_downstream_pids(Node_Task_Pid) ->
-    Ref = make_ref(),
-    Node_Task_Pid ! {?DAG_TOKEN, ?CTL_TOKEN, {get_downstream, {Ref, self()}}},
-    receive
-        {get_downstream, Ref, Pids} -> Pids
-    after ?SYNC_RECEIVE_TIME -> timeout
-    end.
-
-node_task_add_downstream_pids(Node_Task_Pid, Pids) when is_list(Pids) ->
-    Node_Task_Pid ! {?DAG_TOKEN, ?CTL_TOKEN, {add_downstream, Pids}}.
-     
-node_task_deliver_data({coop_node, _Node_Ctl_Pid, Node_Task_Pid}, Data)
-  when is_pid(_Node_Ctl_Pid), is_pid(Node_Task_Pid) ->
-    Node_Task_Pid ! Data;
-node_task_deliver_data(Node_Task_Pid, Data)
-  when is_pid(Node_Task_Pid) ->
-    Node_Task_Pid ! Data.
-
-
-%%----------------------------------------------------------------------
-%% Coop Node control functionality.
-%%----------------------------------------------------------------------
-node_ctl_loop(Kill_Switch, Task_Pid, Node_Fn, Trace_Pid, Log_Pid, Reflect_Pid) ->
-    node_ctl_loop(#coop_node_state{kill_switch=Kill_Switch, ctl=self(),
-                                   task=Task_Pid, task_fn=Node_Fn,
-                                   trace=Trace_Pid, log=Log_Pid,
-                                   reflect=Reflect_Pid}).
-
-node_ctl_loop(#coop_node_state{task=Task_Pid, trace=Trace_Pid} = Coop_Node_State) ->
-    receive
-        %% Commands for controlling the entire Coop_Node element...
-        {?DAG_TOKEN, ?CTL_TOKEN, stop}    -> exit(stopped);
-        {?DAG_TOKEN, ?CTL_TOKEN, clone}   -> node_clone(Coop_Node_State);
-
-        %% Commands for controlling/monitoring the Task_Pid...
-        {?DAG_TOKEN, ?CTL_TOKEN, suspend } -> sys:suspend(Task_Pid);
-        {?DAG_TOKEN, ?CTL_TOKEN, resume  } -> sys:resume(Task_Pid);
-        {?DAG_TOKEN, ?CTL_TOKEN, trace   } -> erlang:trace(Task_Pid, true,  trace_options(Trace_Pid));
-        {?DAG_TOKEN, ?CTL_TOKEN, untrace } -> erlang:trace(Task_Pid, false, trace_options(Trace_Pid));
-
-        {?DAG_TOKEN, ?CTL_TOKEN, log,         Flag,  {Ref, From}} -> From ! {node_ctl_log, Ref, sys:log(Task_Pid, Flag)};
-        {?DAG_TOKEN, ?CTL_TOKEN, log_to_file, File,  {Ref, From}} -> From ! {node_ctl_log_to_file, Ref, sys:log_to_file(Task_Pid, File)};
-        {?DAG_TOKEN, ?CTL_TOKEN, stats,       Flag,  {Ref, From}} -> From ! {node_ctl_stats, Ref, sys:statistics(Task_Pid, Flag)};
-
-        {?DAG_TOKEN, ?CTL_TOKEN, install_trace_fn, FInfo, {Ref, From}} -> From ! {node_ctl_install_trace_fn, Ref, sys:install(Task_Pid, FInfo)};
-        {?DAG_TOKEN, ?CTL_TOKEN, remove_trace_fn, FInfo, {Ref, From}}  -> From ! {node_ctl_remove_trace_fn,  Ref, sys:remove(Task_Pid, FInfo)};
-
-        %% All others are unknown commands, just unqueue them.
-        _Skip_Unknown_Msgs                -> do_nothing
-    end,
-    node_ctl_loop(Coop_Node_State).
-
-node_clone(#coop_node_state{} = _Coop_Node_State) -> ok.
-trace_options(Tracer_Pid) -> [{tracer, Tracer_Pid}, send, 'receive', procs, timestamp].
-
-    
