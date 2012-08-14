@@ -51,10 +51,8 @@
 %% pids: a control process and a data task process.
 %%----------------------------------------------------------------------
 
--spec new(pid(), task_function())
-         -> {coop_node, Ctl_Proc, Data_Proc} when Ctl_Proc :: pid(), Data_Proc :: pid().
--spec new(pid(), task_function(), data_flow_method())
-         -> {coop_node, Ctl_Proc, Data_Proc} when Ctl_Proc :: pid(), Data_Proc :: pid().
+-spec new(pid(), task_function()) -> coop_node().
+-spec new(pid(), task_function(), data_flow_method()) -> coop_node().
 
 %% Round robin is default for downstream data distribution.
 %% Optimized for special case of 1 downstream pid.
@@ -63,10 +61,10 @@ new(Kill_Switch, Node_Fn) ->
 
 %% Override downstream data distribution.
 new(Kill_Switch, {_Task_Mod, _Task_Fn} = Node_Fn, Data_Flow_Method)
-  when is_atom(_Task_Mod), is_atom(_Task_Fn),
-       (       Data_Flow_Method =:= random
-        orelse Data_Flow_Method =:= round_robin
-        orelse Data_Flow_Method =:= broadcast   ) ->
+  when is_pid(Kill_Switch), is_atom(_Task_Mod), is_atom(_Task_Fn),
+       ( Data_Flow_Method =:= random
+         orelse Data_Flow_Method =:= round_robin
+         orelse Data_Flow_Method =:= broadcast   ) ->
 
     %% Start the data task process...
     Task_Pid = make_data_task_pid(Node_Fn, Data_Flow_Method),
@@ -88,9 +86,9 @@ make_data_task_pid(Node_Fn, Data_Flow_Method) ->
     proc_lib:spawn(coop_node_data_rcv, node_data_loop, Task_Args).
 
 make_support_pids() ->
-    Trace_Pid = proc_lib:spawn(?MODULE, echo_loop, ["TRC"]),
+    Trace_Pid = proc_lib:spawn(?MODULE, echo_loop, ["NTRC"]),
     [Log_Pid, Reflect_Pid]
-        = [proc_lib:spawn(?MODULE, echo_loop, [Type]) || Type <- ["LOG", "RFL"]],
+        = [proc_lib:spawn(?MODULE, echo_loop, [Type]) || Type <- ["NLOG", "NRFL"]],
     {Trace_Pid, Log_Pid, Reflect_Pid}.
 
 link_to_kill_switch(Kill_Switch, Procs) when is_list(Procs) ->

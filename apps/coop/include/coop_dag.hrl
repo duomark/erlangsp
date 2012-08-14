@@ -10,9 +10,13 @@
 -type task_function() :: {module(), atom()}.
 -type downstream_workers() :: queue().
 
+-type coop_head() :: {coop_head, pid(), pid()}.
+-type coop_node() :: {coop_node, pid(), pid()}.
+
 -define(DAG_TOKEN,  '$$_DAG').
 -define(DATA_TOKEN, '$$_DATA').
 -define(CTL_TOKEN,  '$$_CTL').
+-define(ROOT_TOKEN, '$$_ROOT').
 
 -define(SEND_CTL_MSG(__Coop_Node, __Ctl_Msg),
         {coop_node, __Ctl_Pid, __Task_Pid} = __Coop_Node,
