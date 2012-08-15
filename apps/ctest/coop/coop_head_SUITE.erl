@@ -17,8 +17,7 @@
 
          send_ctl_msgs/1, send_data_msgs/1,
 
-         sys_suspend/1, sys_format/1, sys_statistics/1
-         %% , sys_log/1,
+         sys_suspend/1, sys_format/1, sys_statistics/1, sys_log/1
          %% sys_install/1
         ]). 
 
@@ -43,8 +42,8 @@ groups() -> [{ctl_tests, [sequence],
               [
                {suspend, [sequence], [sys_suspend]},
                {format,  [sequence], [sys_format]},
-               {stats,   [sequence], [sys_statistics]}
-               %% {log,     [sequence], [sys_log]},
+               {stats,   [sequence], [sys_statistics]},
+               {log,     [sequence], [sys_log]}
                %% {install, [sequence], [sys_install]}
               ]}
             ].
@@ -220,15 +219,10 @@ sys_format(_Config) ->
 
 get_custom_fmt(Status) -> lists:nth(5, element(4, Status)).
 
-%% send_data(N, {coop_node, _Node_Ctl_Pid, Node_Task_Pid} = Coop_Node) ->
-%%     Receiver = [self()],
-%%     ?TM:node_task_add_downstream_pids(Coop_Node, Receiver),
-%%     Receiver = ?TM:node_task_get_downstream_pids(Coop_Node),
-
-%%     %% Verify it computes normally...
+%% send_data(N, Coop_Head) ->
 %%     [begin
-%%          ?TM:node_task_deliver_data(Node_Task_Pid, 5),
-%%          15 = receive Data -> Data end
+%%          ?TM:send_data_msg(Coop_Head, 5),
+%%          5 = receive Data -> Data end
 %%      end || _N <- lists:seq(1,N)].
     
 sys_statistics(_Config) ->
@@ -250,20 +244,25 @@ sys_statistics(_Config) ->
     [true = is_process_alive(P) || P <- Procs],
     ok.
 
-%% sys_log(_Config) ->
-%%     Coop_Node = setup_no_downstream(),
-%%     %% ok = ?TM:node_ctl_log_to_file(Coop_Node, "./coop.dump", self())
-%%     ok = ?TM:node_ctl_log(Coop_Node, true, self()),
-%%     {ok, []} = ?TM:node_ctl_log(Coop_Node, get, self()),
-%%     send_data(6, Coop_Node),
-%%     {ok, Events} = ?TM:node_ctl_log(Coop_Node, get, self()),
-%%     10 = length(Events),
-%%     Ins = lists:duplicate(5,{in,5}),
-%%     Ins = [{Type,Num} || {{Type,Num}, _Flow, _Fun} <- Events],
-%%     Outs = lists:duplicate(5,{out,15}),
-%%     Outs = [{Type,Num} || {{Type,Num,_Pid}, _Flow, _Fun} <- Events],
-%%     ok = ?TM:node_ctl_log(Coop_Node, false, self()).
-%%     %% ok = ?TM:node_ctl_log_to_file(Coop_Node, false, self()).
+sys_log(_Config) ->
+    {{coop_head, Head_Ctl_Pid, Head_Data_Pid} = Coop_Head,
+     Root_Pid, {coop_node, Node_Ctl_Pid, Node_Data_Pid}} = start_head(),
+    Procs = [Head_Ctl_Pid, Head_Data_Pid, Node_Ctl_Pid, Node_Data_Pid, Root_Pid],
+
+    %% ok = ?TM:ctl_log_to_file(Coop_Head, "./coop.dump", self())
+    ok = ?TM:ctl_log(Coop_Head, true, self()),
+    {ok, []} = ?TM:ctl_log(Coop_Head, get, self()),
+    [true = is_process_alive(P) || P <- Procs],
+    ?TM:send_data_msg(Coop_Head, 5),
+    {ok, Events} = ?TM:ctl_log(Coop_Head, get, self()),
+    2 = length(Events),
+    Ins = [{in,5}],
+    Ins = [{Type,Num} || {{Type,Num}, _Flow, _Fun} <- Events],
+    Outs = [{out,5}],
+    Outs = [{Type,Num} || {{Type,Num,_Pid}, _Flow, _Fun} <- Events],
+    ok = ?TM:ctl_log(Coop_Head, false, self()),
+    [true = is_process_alive(P) || P <- Procs],
+    ok.
 
 %% sys_install(_Config) ->
 %%     Coop_Node = {coop_node, _Node_Ctl_Pid, Node_Task_Pid} = setup_no_downstream(),

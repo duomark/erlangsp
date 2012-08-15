@@ -49,8 +49,10 @@ sync_pass_thru_loop({coop_node, Node_Ctl_Pid, Node_Task_Pid} = Coop_Root_Node, D
 
         %% Control messages are not acked...
         {?CTL_TOKEN, Msg} ->
+            In_Opts = sys:handle_debug(Debug_Opts, fun debug_coop/3, {}, {in, Msg}),
             Node_Ctl_Pid ! Msg,
-            sync_pass_thru_loop(Coop_Root_Node, Debug_Opts);
+            Out_Opts = sys:handle_debug(In_Opts, fun debug_coop/3, {}, {out, Msg, Node_Ctl_Pid}),
+            sync_pass_thru_loop(Coop_Root_Node, Out_Opts);
 
         %% Data messages are acked for flow control.
         {?DATA_TOKEN, {Ref, From}, Msg} ->

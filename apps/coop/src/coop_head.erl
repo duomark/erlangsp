@@ -48,8 +48,8 @@
          %% Send commands to coop_head control process...
          %% ctl_clone/1,
          stop/1, suspend_root/1, resume_root/1, format_status/1,
-         %% ctl_suspend/1, ctl_resume/1, ctl_trace/1, ctl_untrace/1,
-         ctl_stats/3 %% ctl_log/3, ctl_log_to_file/3,
+         %% ctl_trace/1, ctl_untrace/1,
+         ctl_stats/3, ctl_log/3, ctl_log_to_file/3
          %% ctl_install_trace_fn/3, ctl_remove_trace_fn/3,
         ]).
 
@@ -144,6 +144,16 @@ ctl_stats(Coop_Head, Flag, From) ->
     Ref = make_ref(),
     send_ctl_msg(Coop_Head, stats, Flag, {Ref, From}),
     wait_ctl_response(stats, Ref).
+
+ctl_log(Coop_Head, Flag, From) ->
+    Ref = make_ref(),
+    send_ctl_msg(Coop_Head, log, Flag, {Ref, From}),
+    wait_ctl_response(log, Ref).
+
+ctl_log_to_file(Coop_Head, Flag, From) ->
+    Ref = make_ref(),
+    send_ctl_msg(Coop_Head, log_to_file, Flag, {Ref, From}),
+    wait_ctl_response(log_to_file, Ref).
      
 
 %%----------------------------------------------------------------------

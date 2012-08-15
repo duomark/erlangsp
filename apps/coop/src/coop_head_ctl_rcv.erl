@@ -54,6 +54,12 @@ msg_loop(State, Root_Pid, Timeout, Debug_Opts) ->
         {?DAG_TOKEN, ?CTL_TOKEN, {format_status}} ->
             State#coop_head_state.log ! sys:get_status(Root_Pid),
             msg_loop(State, Root_Pid, Timeout, Debug_Opts);
+        {?DAG_TOKEN, ?CTL_TOKEN, {log, Flag, {Ref, From}}} ->
+            From ! {log, Ref, sys:log(Root_Pid, Flag)},
+            msg_loop(State, Root_Pid, Timeout, Debug_Opts);
+        {?DAG_TOKEN, ?CTL_TOKEN, log_to_file, File,  {Ref, From}} ->
+            From ! {log_to_file, Ref, sys:log_to_file(Root_Pid, File)},
+            msg_loop(State, Root_Pid, Timeout, Debug_Opts);
 
         %% State management and access control messages...
         {?DAG_TOKEN, ?CTL_TOKEN, {init_state, #coop_head_state{} = New_State}} ->
