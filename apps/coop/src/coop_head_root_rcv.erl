@@ -85,14 +85,16 @@ system_code_change(Misc, _Module, _OldVsn, _Extra) -> {ok, Misc}.
 
 format_status(normal, [_PDict, SysState, Parent, New_Debug_Opts,
                        {Rcv_Loop_Type, _Coop_Root_Node, _Old_Debug_Opts}]) ->
-    Hdr = "Status for coop_head_root",
+    Hdr = "Status for " ++ atom_to_list(?MODULE),
     Log = sys:get_debug(log, New_Debug_Opts, []),
+    Msgs = erlang:process_info(self(), [messages]),
     [{header, Hdr},
-     {data, [{"Status",               SysState},
-             {"Loop",                 Rcv_Loop_Type},
-             {"Parent",               Parent},
-             {"Logged events",        Log},
-             {"Debug",                New_Debug_Opts}]
+     {data, [{"Status",         SysState},
+             {"Loop",           Rcv_Loop_Type},
+             {"Messages",       Msgs},
+             {"Parent",         Parent},
+             {"Logged events",  Log},
+             {"Debug",          New_Debug_Opts}]
      }];
 
 format_status(terminate, StatusData) -> [{terminate, StatusData}].

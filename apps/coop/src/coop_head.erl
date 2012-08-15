@@ -47,7 +47,7 @@
 
          %% Send commands to coop_head control process...
          %% ctl_clone/1,
-         stop/1, suspend_root/1, resume_root/1
+         stop/1, suspend_root/1, resume_root/1, format_status/1
          %% ctl_suspend/1, ctl_resume/1, ctl_trace/1, ctl_untrace/1,
          %% ctl_stats/3, ctl_log/3, ctl_log_to_file/3,
          %% ctl_install_trace_fn/3, ctl_remove_trace_fn/3,
@@ -122,10 +122,11 @@ get_root_pid(Coop_Head) ->
     after ?CTL_MSG_TIMEOUT -> timeout
     end.
 
-stop(Coop_Node)         -> send_ctl_msg(Coop_Node, {stop}).
-suspend_root(Coop_Head) -> send_ctl_msg(Coop_Head, {suspend}).
-resume_root(Coop_Head)  -> send_ctl_msg(Coop_Head, {resume}).
-
+stop(Coop_Node)          -> send_ctl_msg(Coop_Node, {stop}).
+suspend_root(Coop_Head)  -> send_ctl_msg(Coop_Head, {suspend}).
+resume_root(Coop_Head)   -> send_ctl_msg(Coop_Head, {resume}).
+format_status(Coop_Head) -> send_ctl_msg(Coop_Head, {format_status}).
+     
 
 %%----------------------------------------------------------------------
 %% Create a new coop_head. A coop_head is represented by a pair of

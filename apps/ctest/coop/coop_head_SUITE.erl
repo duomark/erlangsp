@@ -184,41 +184,35 @@ sys_suspend(_Config) ->
     [8,9,10,none] = [get_result_data(Node_Data_Pid) || _N <- lists:seq(1,4)].
 
 sys_format(_Config) ->
-    %% Coop_Head = {coop_head, _Node_Ctl_Pid, _Node_Task_Pid} = start_head(),
-    %% _Root_Pid = ?TM:get_root_pid(Coop_Head),
-    ok.
+    {{coop_head, Head_Ctl_Pid, Head_Data_Pid} = _Coop_Head,
+     Root_Pid, {coop_node, Node_Ctl_Pid, Node_Data_Pid}} = start_head(),
+    Procs = [Head_Ctl_Pid, Head_Data_Pid, Node_Ctl_Pid, Node_Data_Pid, Root_Pid],
 
     %% Get the custom status information...
-    %% Custom_Running_Fmt = get_custom_fmt(sys:get_status(Node_Task_Pid)),
-    %% ["Status for coop_node", Custom_Running_Props]
-    %%     = [proplists:get_value(P, Custom_Running_Fmt) || P <- [header, data]],
-    %% [running, {coop_node_SUITE,x3}, 0, random]
-    %%     = [proplists:get_value(P, Custom_Running_Props)
-    %%        || P <- ["Status", "Node_Fn", "Downstream_Pid_Count", "Data_Flow_Method"]]
+    Custom_Running_Fmt = get_custom_fmt(sys:get_status(Root_Pid)),
+    ["Status for coop_head_root_rcv", Custom_Running_Props]
+        = [proplists:get_value(P, Custom_Running_Fmt) || P <- [header, data]],
+    [running, pass_thru, [{messages, []}]]
+        = [proplists:get_value(P, Custom_Running_Props) || P <- ["Status", "Loop", "Messages"]],
+    [true = is_process_alive(P) || P <- Procs],
 
-%%     [A,B,C] = [proc_lib:spawn_link(?MODULE, report_result, [[]]) || _N <- lists:seq(1,3)],
-%%     ?TM:node_task_add_downstream_pids(Coop_Node, [A,B,C]),
-%%     [A,B,C] = ?TM:node_task_get_downstream_pids(Coop_Node),
-
-%%     ?TM:node_ctl_suspend(Coop_Node),
-%%     timer:sleep(50),
-%%     Custom_Suspended_Fmt = get_custom_fmt(sys:get_status(Node_Task_Pid)),
-%%     Custom_Suspended_Props = proplists:get_value(data, Custom_Suspended_Fmt),
-%%     [suspended, {coop_node_SUITE,x3}, 3, random]
-%%         = [proplists:get_value(P, Custom_Suspended_Props)
-%%            || P <- ["Status", "Node_Fn", "Downstream_Pid_Count", "Data_Flow_Method"]],
+    sys:suspend(Root_Pid),
+    timer:sleep(50),
+    Custom_Suspended_Fmt = get_custom_fmt(sys:get_status(Root_Pid)),
+    Custom_Suspended_Props = proplists:get_value(data, Custom_Suspended_Fmt),
+    [suspended, pass_thru, [{messages, []}]]
+        = [proplists:get_value(P, Custom_Suspended_Props) || P <- ["Status", "Loop", "Messages"]],
     
-%%     ?TM:node_ctl_resume(Coop_Node),
-%%     timer:sleep(50),
-%%     New_Custom_Running_Fmt = get_custom_fmt(sys:get_status(Node_Task_Pid)),
-%%     ["Status for coop_node", New_Custom_Running_Props]
-%%         = [proplists:get_value(P, New_Custom_Running_Fmt) || P <- [header, data]],
-%%     [running, {coop_node_SUITE,x3}, 3, random]
-%%         = [proplists:get_value(P, New_Custom_Running_Props)
-%%            || P <- ["Status", "Node_Fn", "Downstream_Pid_Count", "Data_Flow_Method"]].
+    sys:resume(Root_Pid),
+    timer:sleep(50),
+    New_Custom_Running_Fmt = get_custom_fmt(sys:get_status(Root_Pid)),
+    ["Status for coop_head_root_rcv", New_Custom_Running_Props]
+        = [proplists:get_value(P, New_Custom_Running_Fmt) || P <- [header, data]],
+    [running, pass_thru, [{messages, []}]]
+        = [proplists:get_value(P, New_Custom_Running_Props) || P <- ["Status", "Loop", "Messages"]].
     
 
-%% get_custom_fmt(Status) -> lists:nth(5, element(4, Status)).
+get_custom_fmt(Status) -> lists:nth(5, element(4, Status)).
 
 %% send_data(N, {coop_node, _Node_Ctl_Pid, Node_Task_Pid} = Coop_Node) ->
 %%     Receiver = [self()],
