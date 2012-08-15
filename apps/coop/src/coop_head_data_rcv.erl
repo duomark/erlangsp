@@ -12,7 +12,7 @@
 -author(jayn).
 
 %% Receive loop methods
--export([one_at_a_time_loop/2]).
+-export([one_at_a_time_loop/2, relay_msg_to_root_pid/3]).
 
 -include("../include/coop_dag.hrl").
 

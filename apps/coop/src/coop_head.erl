@@ -5,12 +5,22 @@
 %%%    Coop Head construct, manages data flow to the Coop Body.
 %%%
 %%%    Coop Head is built from a Ctl process and a Data process that
-%%%    are used to separate control functions from data processing.
-%%%    Messages in these two queues are sent synchronously to the
-%%%    Root Pid that serves merely as a gate keeper to the Coop Body
-%%%    and its Root Body process. By acking each request, after it
-%%%    relays it to the body, the Root Pid ensures that Control
-%%%    messages can be seen ahead of queued Data messages.
+%%%    are used to prioritize control commands over data processing.
+%%%    Messages in the data queue are sent synchronously to the
+%%%    Root Pid which then relays them to the Coop Body. Control
+%%%    messages are relayed without any synchronous flow restrictions.
+%%%    By acking each data request, after it relays it to the body,
+%%%    the Root Pid ensures that all Control messages can be seen ahead
+%%%    of queued Data messages.
+%%%
+%%%    It is possible to send a data message on the control channel.
+%%%    This serves as a high-priority bypass, but it use should be
+%%%    rare. 
+%%%
+%%%    Excessive use of control messages will cause queueing at the
+%%%    Root Pid rather than in another area of the system, resulting
+%%%    in delayed responsiveness to command and control or OTP System
+%%%    messages, as well as a lack of data throughput.
 %%%
 %%%    The Root Pid also responds to OTP System messages so it can
 %%%    be suspended, resumed, debugged, traced and managed using all
@@ -31,7 +41,8 @@
          new/2,
 
          %% Send commands to coop_head data task process...
-         send_ctl_msg/2, send_data_msg/2,
+         send_ctl_msg/2, send_ctl_change_timeout/2,
+         send_data_msg/2, send_priority_data_msg/2,
          send_data_change_timeout/2, get_root_pid/1,
 
          %% Send commands to coop_head control process...
@@ -64,7 +75,7 @@
 -include("../include/coop_dag.hrl").
 -include("../include/coop_head.hrl").
 
--define(CTL_MSG_TIMEOUT,  2000).
+-define(CTL_MSG_TIMEOUT,  500).
 -define(SYNC_MSG_TIMEOUT, none).
 
 
@@ -72,7 +83,9 @@
 %% External interface for sending ctl/data messages
 %%----------------------------------------------------------------------
 -spec send_ctl_msg(coop_head(), any()) -> ok.
+-spec send_ctl_change_timeout(coop_head(), none | pos_integer()) -> ok.
 -spec send_data_msg(coop_head(), any()) -> ok.
+-spec send_priority_data_msg(coop_head(), any()) -> ok.
 -spec send_data_change_timeout(coop_head(), none | pos_integer()) -> ok.
 -spec get_root_pid(coop_head()) -> pid().
 
@@ -84,8 +97,16 @@ send_ctl_msg({coop_head, Head_Ctl_Pid, _Head_Data_Pid}, Msg) ->
     Head_Ctl_Pid ! {?DAG_TOKEN, ?CTL_TOKEN, Msg},
     ok.
 
+send_ctl_change_timeout({coop_head, Head_Ctl_Pid, _Head_Data_Pid}, New_Timeout) ->
+    Head_Ctl_Pid ! {?DAG_TOKEN, ?CTL_TOKEN, {change_timeout, New_Timeout}},
+    ok.
+    
 send_data_msg({coop_head, _Head_Ctl_Pid, Head_Data_Pid}, Msg) ->
     Head_Data_Pid ! {?DAG_TOKEN, ?DATA_TOKEN, Msg},
+    ok.
+
+send_priority_data_msg({coop_head, Head_Ctl_Pid, _Head_Data_Pid}, Msg) ->
+    Head_Ctl_Pid ! {?DAG_TOKEN, ?DATA_TOKEN, Msg},
     ok.
 
 send_data_change_timeout({coop_head, _Head_Ctl_Pid, Head_Data_Pid}, New_Timeout) ->
@@ -117,7 +138,7 @@ new(Kill_Switch, Coop_Node)
 
     %% Start the root and data processes...
     Root_Pid = make_root_pid(Coop_Node),
-    Ctl_Pid  = make_ctl_pid (Root_Pid),
+    Ctl_Pid  = make_ctl_pid (Root_Pid, ?CTL_MSG_TIMEOUT),
     Data_Pid = make_data_pid(Root_Pid, ?SYNC_MSG_TIMEOUT),
 
     %% Start support processes and initialize the control process internal state...
@@ -139,8 +160,8 @@ make_root_pid({coop_node, _Node_Ctl_Pid, _Node_Data_Pid} = Coop_Node) ->
 make_data_pid(Root_Pid, Timeout) when is_pid(Root_Pid) ->
     proc_lib:spawn(coop_head_data_rcv, one_at_a_time_loop, [Root_Pid, Timeout]).
 
-make_ctl_pid(Root_Pid) when is_pid(Root_Pid) ->
-    proc_lib:spawn(coop_head_ctl_rcv, msg_loop, [{}, Root_Pid]).
+make_ctl_pid(Root_Pid, Timeout) when is_pid(Root_Pid) ->
+    proc_lib:spawn(coop_head_ctl_rcv, msg_loop, [{}, Root_Pid, Timeout]).
 
 make_support_pids() ->
     Trace_Pid = proc_lib:spawn(?MODULE, echo_loop, ["HTRC"]),

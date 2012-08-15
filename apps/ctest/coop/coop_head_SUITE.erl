@@ -142,10 +142,10 @@ start_head() ->
 send_ctl_msgs(_Config) ->
     {{coop_head, Head_Ctl_Pid, Head_Data_Pid} = Coop_Head,
      Root_Pid, {coop_node, Node_Ctl_Pid, Node_Data_Pid}} = start_head(),
+    Procs = [Head_Ctl_Pid, Head_Data_Pid, Node_Ctl_Pid, Node_Data_Pid, Root_Pid],
     [?TM:send_ctl_msg(Coop_Head, N) || N <- lists:seq(2,4)],
     timer:sleep(50),
-    [true = is_process_alive(P) || P <- [Head_Ctl_Pid, Head_Data_Pid,
-                                         Node_Ctl_Pid, Node_Data_Pid, Root_Pid]],
+    [true = is_process_alive(P) || P <- Procs],
     [2,3,4,none] = [get_result_data(Node_Ctl_Pid) || _N <- lists:seq(1,4)],
     [none,none,none,none] = [get_result_data(Node_Data_Pid) || _N <- lists:seq(1,4)],
     ok.
@@ -153,10 +153,10 @@ send_ctl_msgs(_Config) ->
 send_data_msgs(_Config) ->
     {{coop_head, Head_Ctl_Pid, Head_Data_Pid} = Coop_Head,
      Root_Pid, {coop_node, Node_Ctl_Pid, Node_Data_Pid}} = start_head(),
+    Procs = [Head_Ctl_Pid, Head_Data_Pid, Node_Ctl_Pid, Node_Data_Pid, Root_Pid],
     [?TM:send_data_msg(Coop_Head, N) || N <- lists:seq(5,7)],
     timer:sleep(50),
-    [true = is_process_alive(P) || P <- [Head_Ctl_Pid, Head_Data_Pid,
-                                         Node_Ctl_Pid, Node_Data_Pid, Root_Pid]],
+    [true = is_process_alive(P) || P <- Procs],
     [none,none,none,none] = [get_result_data(Node_Ctl_Pid) || _N <- lists:seq(1,4)],
     [5,6,7,none] = [get_result_data(Node_Data_Pid) || _N <- lists:seq(1,4)],
     ok.
@@ -164,25 +164,23 @@ send_data_msgs(_Config) ->
 sys_suspend(_Config) ->
     {{coop_head, Head_Ctl_Pid, Head_Data_Pid} = Coop_Head,
      Root_Pid, {coop_node, Node_Ctl_Pid, Node_Data_Pid}} = start_head(),
+    Procs = [Head_Ctl_Pid, Head_Data_Pid, Node_Ctl_Pid, Node_Data_Pid, Root_Pid],
     [?TM:send_data_msg(Coop_Head, N) || N <- lists:seq(5,7)],
     timer:sleep(50),
-    [true = is_process_alive(P) || P <- [Head_Ctl_Pid, Head_Data_Pid,
-                                         Node_Ctl_Pid, Node_Data_Pid, Root_Pid]],
+    [true = is_process_alive(P) || P <- Procs],
     [5,6,7,none] = [get_result_data(Node_Data_Pid) || _N <- lists:seq(1,4)],
     
     %% Suspend message handling and get no result...
     ?TM:suspend_root(Coop_Head),
     timer:sleep(50),
     [?TM:send_data_msg(Coop_Head, N) || N <- lists:seq(8,10)],
-    [true = is_process_alive(P) || P <- [Head_Ctl_Pid, Head_Data_Pid,
-                                         Node_Ctl_Pid, Node_Data_Pid, Root_Pid]],
+    [true = is_process_alive(P) || P <- Procs],
     [none,none,none,none] = [get_result_data(Node_Data_Pid) || _N <- lists:seq(1,4)],
 
     %% Resume and result appears.
     ?TM:resume_root(Coop_Head),
     timer:sleep(50),
-    [true = is_process_alive(P) || P <- [Head_Ctl_Pid, Head_Data_Pid,
-                                         Node_Ctl_Pid, Node_Data_Pid, Root_Pid]],
+    [true = is_process_alive(P) || P <- Procs],
     [8,9,10,none] = [get_result_data(Node_Data_Pid) || _N <- lists:seq(1,4)].
 
 sys_format(_Config) ->
