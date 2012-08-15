@@ -17,7 +17,8 @@
 
          send_ctl_msgs/1, send_data_msgs/1,
 
-         sys_suspend/1, sys_format/1 %% , sys_statistics/1, sys_log/1,
+         sys_suspend/1, sys_format/1, sys_statistics/1
+         %% , sys_log/1,
          %% sys_install/1
         ]). 
 
@@ -41,8 +42,8 @@ groups() -> [{ctl_tests, [sequence],
              {sys_tests, [sequence],
               [
                {suspend, [sequence], [sys_suspend]},
-               {format,  [sequence], [sys_format]}
-               %% {stats,   [sequence], [sys_statistics]},
+               {format,  [sequence], [sys_format]},
+               {stats,   [sequence], [sys_statistics]}
                %% {log,     [sequence], [sys_log]},
                %% {install, [sequence], [sys_install]}
               ]}
@@ -82,7 +83,8 @@ head_ctl_kill_one_proc(_Config) ->
     [true = is_process_alive(Pid) || Pid <- [Head_Ctl_Pid, Head_Data_Pid]],
     exit(Head_Data_Pid, kill),
     timer:sleep(50),
-    [false = is_process_alive(Pid) || Pid <- [Head_Ctl_Pid, Head_Data_Pid, Kill_Switch]].
+    [false = is_process_alive(Pid) || Pid <- [Head_Ctl_Pid, Head_Data_Pid, Kill_Switch]],
+    ok.
 
 head_ctl_kill_two_proc(_Config) ->
     Args = [Kill_Switch, _Coop_Node] = create_new_coop_head_args(fake_coop_node),
@@ -93,7 +95,8 @@ head_ctl_kill_two_proc(_Config) ->
     exit(Head_Ctl_Pid2, kill),
     timer:sleep(50),
     [false = is_process_alive(Pid) || Pid <- [Head_Ctl_Pid1, Head_Data_Pid1, Head_Ctl_Pid2,
-                                              Head_Data_Pid2, Kill_Switch]].
+                                              Head_Data_Pid2, Kill_Switch]],
+    ok.
 
 head_ctl_stop_one_proc(_Config) ->
     Args = [_Kill_Switch, _Coop_Node] = create_new_coop_head_args(fake_coop_node),
@@ -101,9 +104,10 @@ head_ctl_stop_one_proc(_Config) ->
     [true = is_process_alive(Pid) || Pid <- [Head_Ctl_Pid, Head_Data_Pid]],
     ?TM:stop(Coop_Node),
     timer:sleep(50),
-    false = is_process_alive(Head_Ctl_Pid).
+    false = is_process_alive(Head_Ctl_Pid),
     %% false = is_process_alive(Head_Data_Pid),
     %% false = is_process_alive(Kill_Switch).
+    ok.
 
 %%----------------------------------------------------------------------
 %% Function Tasks
@@ -181,7 +185,8 @@ sys_suspend(_Config) ->
     ?TM:resume_root(Coop_Head),
     timer:sleep(50),
     [true = is_process_alive(P) || P <- Procs],
-    [8,9,10,none] = [get_result_data(Node_Data_Pid) || _N <- lists:seq(1,4)].
+    [8,9,10,none] = [get_result_data(Node_Data_Pid) || _N <- lists:seq(1,4)],
+    ok.
 
 sys_format(_Config) ->
     {{coop_head, Head_Ctl_Pid, Head_Data_Pid} = _Coop_Head,
@@ -209,7 +214,8 @@ sys_format(_Config) ->
     ["Status for coop_head_root_rcv", New_Custom_Running_Props]
         = [proplists:get_value(P, New_Custom_Running_Fmt) || P <- [header, data]],
     [running, pass_thru, [{messages, []}]]
-        = [proplists:get_value(P, New_Custom_Running_Props) || P <- ["Status", "Loop", "Messages"]].
+        = [proplists:get_value(P, New_Custom_Running_Props) || P <- ["Status", "Loop", "Messages"]],
+    ok.
     
 
 get_custom_fmt(Status) -> lists:nth(5, element(4, Status)).
@@ -225,15 +231,24 @@ get_custom_fmt(Status) -> lists:nth(5, element(4, Status)).
 %%          15 = receive Data -> Data end
 %%      end || _N <- lists:seq(1,N)].
     
-%% sys_statistics(_Config) ->
-%%     Coop_Node = setup_no_downstream(),
-%%     ok = ?TM:node_ctl_stats(Coop_Node, true, self()),
-%%     {ok, Props1} = ?TM:node_ctl_stats(Coop_Node, get, self()),
-%%     [0,0] = [proplists:get_value(P, Props1) || P <- [messages_in, messages_out]],
-%%     send_data(10, Coop_Node),
-%%     {ok, Props2} = ?TM:node_ctl_stats(Coop_Node, get, self()),
-%%     [12,10] = [proplists:get_value(P, Props2) || P <- [messages_in, messages_out]],
-%%     ok = ?TM:node_ctl_stats(Coop_Node, false, self()).
+sys_statistics(_Config) ->
+    {{coop_head, Head_Ctl_Pid, Head_Data_Pid} = Coop_Head,
+     Root_Pid, {coop_node, Node_Ctl_Pid, Node_Data_Pid}} = start_head(),
+    Procs = [Head_Ctl_Pid, Head_Data_Pid, Node_Ctl_Pid, Node_Data_Pid, Root_Pid],
+
+    ok = ?TM:ctl_stats(Coop_Head, true, self()),
+    [true = is_process_alive(P) || P <- Procs],
+    {ok, Props1} = ?TM:ctl_stats(Coop_Head, get, self()),
+    [0,0] = [proplists:get_value(P, Props1) || P <- [messages_in, messages_out]],
+    ok = ?TM:send_data_msg(Coop_Head, 10),
+    ok = ?TM:send_data_msg(Coop_Head, 11),
+    ok = ?TM:send_data_msg(Coop_Head, 12),
+    timer:sleep(50),
+    {ok, Props2} = ?TM:ctl_stats(Coop_Head, get, self()),
+    [3,3] = [proplists:get_value(P, Props2) || P <- [messages_in, messages_out]],
+    ok = ?TM:ctl_stats(Coop_Head, false, self()),
+    [true = is_process_alive(P) || P <- Procs],
+    ok.
 
 %% sys_log(_Config) ->
 %%     Coop_Node = setup_no_downstream(),

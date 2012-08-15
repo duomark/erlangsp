@@ -47,9 +47,9 @@
 
          %% Send commands to coop_head control process...
          %% ctl_clone/1,
-         stop/1, suspend_root/1, resume_root/1, format_status/1
+         stop/1, suspend_root/1, resume_root/1, format_status/1,
          %% ctl_suspend/1, ctl_resume/1, ctl_trace/1, ctl_untrace/1,
-         %% ctl_stats/3, ctl_log/3, ctl_log_to_file/3,
+         ctl_stats/3 %% ctl_log/3, ctl_log_to_file/3,
          %% ctl_install_trace_fn/3, ctl_remove_trace_fn/3,
         ]).
 
@@ -77,6 +77,7 @@
 
 -define(CTL_MSG_TIMEOUT,  500).
 -define(SYNC_MSG_TIMEOUT, none).
+-define(SYNC_RCV_TIMEOUT, 2000).
 
 
 %%----------------------------------------------------------------------
@@ -89,12 +90,19 @@
 -spec send_data_change_timeout(coop_head(), none | pos_integer()) -> ok.
 -spec get_root_pid(coop_head()) -> pid().
 
--spec stop(coop_node()) -> ok.
--spec suspend_root(coop_node()) -> ok.
--spec resume_root(coop_node()) -> ok.
+-spec stop(coop_head()) -> ok.
+-spec suspend_root(coop_head()) -> ok.
+-spec resume_root(coop_head()) -> ok.
+-spec format_status(coop_head()) -> ok.
+
+-spec ctl_stats(coop_head(), boolean() | get, pid()) -> ok | {ok, list()}.
 
 send_ctl_msg({coop_head, Head_Ctl_Pid, _Head_Data_Pid}, Msg) ->
     Head_Ctl_Pid ! {?DAG_TOKEN, ?CTL_TOKEN, Msg},
+    ok.
+
+send_ctl_msg({coop_head, Head_Ctl_Pid, _Head_Data_Pid}, Msg, Flag, From) ->
+    Head_Ctl_Pid ! {?DAG_TOKEN, ?CTL_TOKEN, {Msg, Flag, From}},
     ok.
 
 send_ctl_change_timeout({coop_head, Head_Ctl_Pid, _Head_Data_Pid}, New_Timeout) ->
@@ -126,6 +134,16 @@ stop(Coop_Node)          -> send_ctl_msg(Coop_Node, {stop}).
 suspend_root(Coop_Head)  -> send_ctl_msg(Coop_Head, {suspend}).
 resume_root(Coop_Head)   -> send_ctl_msg(Coop_Head, {resume}).
 format_status(Coop_Head) -> send_ctl_msg(Coop_Head, {format_status}).
+
+wait_ctl_response(Type, Ref) ->
+    receive {Type, Ref, Info} -> Info
+    after ?SYNC_RCV_TIMEOUT -> timeout
+    end.
+
+ctl_stats(Coop_Head, Flag, From) ->
+    Ref = make_ref(),
+    send_ctl_msg(Coop_Head, stats, Flag, {Ref, From}),
+    wait_ctl_response(stats, Ref).
      
 
 %%----------------------------------------------------------------------

@@ -48,6 +48,9 @@ msg_loop(State, Root_Pid, Timeout, Debug_Opts) ->
         {?DAG_TOKEN, ?CTL_TOKEN, {resume}} ->
             sys:resume(Root_Pid),
             msg_loop(State, Root_Pid, Timeout, Debug_Opts);
+        {?DAG_TOKEN, ?CTL_TOKEN, {stats, Flag, {Ref, From}}} ->
+            From ! {stats, Ref, sys:statistics(Root_Pid, Flag)},
+            msg_loop(State, Root_Pid, Timeout, Debug_Opts);
         {?DAG_TOKEN, ?CTL_TOKEN, {format_status}} ->
             State#coop_head_state.log ! sys:get_status(Root_Pid),
             msg_loop(State, Root_Pid, Timeout, Debug_Opts);

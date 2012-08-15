@@ -54,9 +54,11 @@ sync_pass_thru_loop({coop_node, Node_Ctl_Pid, Node_Task_Pid} = Coop_Root_Node, D
 
         %% Data messages are acked for flow control.
         {?DATA_TOKEN, {Ref, From}, Msg} ->
+            In_Opts = sys:handle_debug(Debug_Opts, fun debug_coop/3, {}, {in, Msg}),
             Node_Task_Pid ! Msg,
+            Out_Opts = sys:handle_debug(In_Opts, fun debug_coop/3, {}, {out, Msg, Node_Task_Pid}),
             From ! {?ROOT_TOKEN, Ref, self()},
-            sync_pass_thru_loop(Coop_Root_Node, Debug_Opts);
+            sync_pass_thru_loop(Coop_Root_Node, Out_Opts);
 
         %% Crash the process if unexpected data is received.
         _Unexpected -> exit(coop_root_bad_data)
