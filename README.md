@@ -18,7 +18,7 @@ Goals
 The ultimate goal of this project is to provide the average erlang programmer a huge boost in productivity and performance by providing easy access to complex concurrent computation models. In addition the following are considered intermediate goals:
 
   * Enable dataflow algorithms
-  * Promote graph computation and data storage/access
+  * Promote graph computation and dynamic data storage/access
   * Provide a toolbox with much higher scalability patterns than OTP offers
   * Simplify the code to implement common concurrent architectural patterns
   * Display algorithms in action through the browser
@@ -26,11 +26,11 @@ The ultimate goal of this project is to provide the average erlang programmer a 
 Related Work
 ============
 
-As of April 12, 2012, I discovered the approach I have been designing is a reinvention of Algorithmic Skeletons (Murray Cole, "Algorithmic Skeletons: structured management of parallel computation" MIT Press, Cambdridge, MA, USA, 1989). I only discovered these references after implementing the first proof-of-concept.  Workflow patterns as implemented in Business Processing E. Languages (BPEL) also serve as a model for common concurrency patterns.
+As of April 12, 2012, I discovered the approach I have been designing is a reinvention of Algorithmic Skeletons (Murray Cole, "Algorithmic Skeletons: structured management of parallel computation" MIT Press, Cambdridge, MA, USA, 1989). I only discovered these references after implementing the first proof-of-concept.  Workflow patterns as implemented in Business Processing Execution Languages (BPEL) also serve as a model for common concurrency patterns.
 
 There are also similarities to http://github.com/vladdu/erl-pipes although I expect this library to go far beyond Hartmann-style pipelines.
 
-On July 13, 2012 I heard about http://github.com/bergie/noflo which is a Node.js implementation of Flow-Based Programming. This seems to have many similarities due to the basis on digraphs. They seem to be concentrating on integration with existing flow-based tools and declarative languages like dot (used by graphviz). Erlang/SP intends to be more comfortable to an erlang programmer, and hopefully more graphical with browser-based interactions, however internally adopting a language like dot might be an option.
+On July 13, 2012 I came across http://github.com/bergie/noflo which is a Node.js implementation of Flow-Based Programming. This seems to have many similarities due to the basis on digraphs. They seem to be concentrating on integration with existing flow-based tools and declarative languages like dot (used by graphviz). Erlang/SP intends to be more comfortable to an erlang programmer, and hopefully more graphical with browser-based interactions, however internally adopting a language like dot might be an option.
 
 Travis CI
 =========
@@ -57,6 +57,6 @@ Compiling and testing erlangsp
 
 Download and install the source code, then perform the following at the command line:
 
-  1. make realclean all eunit dialyze rel
+  1. make realclean all test dialyze rel
 
-You must write erlang code that uses the erlangsp library for your application to take advantage of the services provided.
+You must write erlang code that uses the erlangsp library for your application to take advantage of the services provided. The best way to do that is to use rebar and name erlangsp as an included application in your .app.src application file.
