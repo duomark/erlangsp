@@ -148,11 +148,11 @@ node_task_add_downstream_pids({coop_node, _Node_Ctl_Pid, Node_Task_Pid}, Pids) w
     Node_Task_Pid ! {?DAG_TOKEN, ?CTL_TOKEN, {add_downstream, Pids}},
     ok.
 
-%% The downstream Pid can be either a coop_node or any other process type.
-%% We need to accept a raw Pid, rather than a Coop_Node.
-node_task_deliver_data(Node_Task_Pid, Data)
-  when is_pid(Node_Task_Pid) ->
-    Node_Task_Pid ! Data.
+%% Deliver data to a downstream Pid or Coop_Node.
+node_task_deliver_data({coop_node, _Node_Ctl_Pid, Node_Task_Pid}, Data) ->
+    Node_Task_Pid ! Data;
+node_task_deliver_data(Pid, Data) when is_pid(Pid) ->
+    Pid ! Data.
 
 
 %%----------------------------------------------------------------------
