@@ -38,12 +38,12 @@
 %% Graph API
 -export([
          %% Create coop_head instances...
-         new/2,
+         new/2, get_kill_switch/1, get_root_pid/1,
 
          %% Send commands to coop_head data task process...
          send_ctl_msg/2, send_ctl_change_timeout/2,
          send_data_msg/2, send_priority_data_msg/2,
-         send_data_change_timeout/2, get_root_pid/1,
+         send_data_change_timeout/2,
 
          %% Send commands to coop_head control process...
          %% ctl_clone/1,
@@ -97,48 +97,23 @@
 
 -spec ctl_stats(coop_head(), boolean() | get, pid()) -> ok | {ok, list()}.
 
-send_ctl_msg({coop_head, Head_Ctl_Pid, _Head_Data_Pid}, Msg) ->
-    Head_Ctl_Pid ! {?DAG_TOKEN, ?CTL_TOKEN, Msg},
-    ok.
-
-send_ctl_msg({coop_head, Head_Ctl_Pid, _Head_Data_Pid}, Msg, Flag, From) ->
-    Head_Ctl_Pid ! {?DAG_TOKEN, ?CTL_TOKEN, {Msg, Flag, From}},
-    ok.
-
-send_ctl_change_timeout({coop_head, Head_Ctl_Pid, _Head_Data_Pid}, New_Timeout) ->
-    Head_Ctl_Pid ! {?DAG_TOKEN, ?CTL_TOKEN, {change_timeout, New_Timeout}},
-    ok.
+send_ctl_msg_internal ({coop_head, Head_Ctl_Pid, _Head_Data_Pid}, Msg) -> Head_Ctl_Pid  ! {?DAG_TOKEN, ?CTL_TOKEN,  Msg}, ok.
+send_data_msg_internal({coop_head, _Head_Ctl_Pid, Head_Data_Pid}, Msg) -> Head_Data_Pid ! {?DAG_TOKEN, ?DATA_TOKEN, Msg}, ok.
     
-send_data_msg({coop_head, _Head_Ctl_Pid, Head_Data_Pid}, Msg) ->
-    Head_Data_Pid ! {?DAG_TOKEN, ?DATA_TOKEN, Msg},
-    ok.
-
-send_priority_data_msg({coop_head, Head_Ctl_Pid, _Head_Data_Pid}, Msg) ->
-    Head_Ctl_Pid ! {?DAG_TOKEN, ?DATA_TOKEN, Msg},
-    ok.
-
+send_ctl_msg(Coop_Head, Msg) -> send_ctl_msg_internal(Coop_Head, Msg).
+send_ctl_msg(Coop_Head, Msg, Flag, From) -> send_ctl_msg_internal(Coop_Head, {Msg, Flag, From}).
+send_ctl_change_timeout(Coop_Head, New_Timeout) -> send_ctl_msg_internal(Coop_Head, {change_timeout, New_Timeout}).
+    
+send_data_msg(Coop_Head, Msg) -> send_data_msg_internal(Coop_Head, Msg).
+send_priority_data_msg({coop_head, Head_Ctl_Pid, _Head_Data_Pid}, Msg) -> Head_Ctl_Pid  ! {?DAG_TOKEN, ?DATA_TOKEN, Msg}, ok.
 send_data_change_timeout({coop_head, _Head_Ctl_Pid, Head_Data_Pid}, New_Timeout) ->
     Head_Data_Pid ! {?DAG_TOKEN, ?CTL_TOKEN, {change_timeout, New_Timeout}},
     ok.
 
-get_root_pid(Coop_Head) ->
-    Ref = make_ref(),
-    send_ctl_msg(Coop_Head, {get_root_pid, {Ref, self()}}),
-
-    %% Synch message optimization with ref()
-    receive {get_root_pid, Ref, Root_Pid} -> Root_Pid
-    after ?CTL_MSG_TIMEOUT -> timeout
-    end.
-
-stop(Coop_Node)          -> send_ctl_msg(Coop_Node, {stop}).
+stop(Coop_Head)          -> send_ctl_msg(Coop_Head, {stop}).
 suspend_root(Coop_Head)  -> send_ctl_msg(Coop_Head, {suspend}).
 resume_root(Coop_Head)   -> send_ctl_msg(Coop_Head, {resume}).
 format_status(Coop_Head) -> send_ctl_msg(Coop_Head, {format_status}).
-
-wait_ctl_response(Type, Ref) ->
-    receive {Type, Ref, Info} -> Info
-    after ?SYNC_RCV_TIMEOUT -> timeout
-    end.
 
 ctl_stats(Coop_Head, Flag, From) ->
     Ref = make_ref(),
@@ -154,6 +129,21 @@ ctl_log_to_file(Coop_Head, Flag, From) ->
     Ref = make_ref(),
     send_ctl_msg(Coop_Head, log_to_file, Flag, {Ref, From}),
     wait_ctl_response(log_to_file, Ref).
+
+get_root_pid(Coop_Head) ->
+    Ref = make_ref(),
+    send_ctl_msg(Coop_Head, {get_root_pid, {Ref, self()}}),
+    wait_ctl_response(get_root_pid, Ref).
+
+get_kill_switch(Coop_Head) ->
+    Ref = make_ref(),
+    send_ctl_msg(Coop_Head, {get_kill_switch, {Ref, self()}}),
+    wait_ctl_response(get_kill_switch, Ref).
+
+wait_ctl_response(Type, Ref) ->
+    receive {Type, Ref, Info} -> Info
+    after ?SYNC_RCV_TIMEOUT -> timeout
+    end.
      
 
 %%----------------------------------------------------------------------

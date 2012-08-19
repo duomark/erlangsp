@@ -13,7 +13,9 @@
 
 %% Friendly API
 -export([pipeline/2, fanout/3, fanout_router/2, fanout_router_loop/3]).
--export([relay_data/2, relay_high_priority_data/2]).
+
+%% Treat Coops like Pids
+-export([get_kill_switch/1, relay_data/2, relay_high_priority_data/2]).
 
 %% Exports for spawn_link only
 -export([pipe_worker/2]).
@@ -94,6 +96,10 @@ fanout_router_loop(Fn, N, ProcVertices)
 %%----------------------------------------------------------------------
 %% Utilities to treat Coops like Pids
 %%----------------------------------------------------------------------
+
+%% The Coop_Head has reference to the Kill_Switch process.
+get_kill_switch(Coop_Head) ->
+    coop_head:get_kill_switch(Coop_Head).
 
 %% Relay data is used to deliver Node output to Coop_Head, Coop_Node or raw Pid.
 relay_data(Pid, Data) when is_pid(Pid) ->

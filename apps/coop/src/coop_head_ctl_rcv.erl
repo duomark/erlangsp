@@ -27,9 +27,24 @@
 msg_loop(State, Root_Pid, Timeout) ->
     msg_loop(State, Root_Pid, Timeout, sys:debug_options([])).
 
-msg_loop(State, Root_Pid, Timeout, Debug_Opts) ->
+%% Until init finished, respond only to OTP and receiving an initial state record.
+msg_loop({} = State, Root_Pid, Timeout, Debug_Opts) ->
     receive
+        %% System messages for compatibility with OTP...
+        {'EXIT', _Parent, Reason} -> exit(Reason);
+        {system, From, System_Msg} ->
+            Sys_Args = {State, Root_Pid, Timeout, Debug_Opts},
+            handle_sys(Sys_Args, From, System_Msg);
+        {get_modules, From} ->
+            From ! {modules, [?MODULE]},
+            msg_loop(State, Root_Pid, Timeout, Debug_Opts);
+        {?DAG_TOKEN, ?CTL_TOKEN, {init_state, #coop_head_state{} = New_State}} ->
+            msg_loop(New_State, Root_Pid, Timeout, Debug_Opts)
+    end;
 
+%% Normal message loop after initial state is received.
+msg_loop(#coop_head_state{} = State, Root_Pid, Timeout, Debug_Opts) ->
+    receive
         %% System messages for compatibility with OTP...
         {'EXIT', _Parent, Reason} -> exit(Reason);
         {system, From, System_Msg} ->
@@ -62,10 +77,11 @@ msg_loop(State, Root_Pid, Timeout, Debug_Opts) ->
             msg_loop(State, Root_Pid, Timeout, Debug_Opts);
 
         %% State management and access control messages...
-        {?DAG_TOKEN, ?CTL_TOKEN, {init_state, #coop_head_state{} = New_State}} ->
-            msg_loop(New_State, Root_Pid, Timeout, Debug_Opts);
         {?DAG_TOKEN, ?CTL_TOKEN, {change_timeout, New_Timeout}} ->
             msg_loop(State, Root_Pid, New_Timeout, Debug_Opts);
+        {?DAG_TOKEN, ?CTL_TOKEN, {get_kill_switch, {Ref, From}}} ->
+            From ! {get_kill_switch, Ref, State#coop_head_state.kill_switch},
+            msg_loop(State, Root_Pid, Timeout, Debug_Opts);
         {?DAG_TOKEN, ?CTL_TOKEN, {get_root_pid, {Ref, From}}} ->
             From ! {get_root_pid, Ref, Root_Pid},
             msg_loop(State, Root_Pid, Timeout, Debug_Opts);
@@ -111,15 +127,15 @@ system_continue(_Parent, New_Debug_Opts, {State, Root_Pid, Timeout, _Old_Debug_O
 system_terminate(Reason, _Parent, _Debug_Opts, _Misc) -> exit(Reason).
 system_code_change(Misc, _Module, _OldVsn, _Extra) -> {ok, Misc}.
 
-format_status(normal, [_PDict, SysState, Parent, New_Debug_Opts,
+format_status(normal, [_PDict, Sys_State, Parent, New_Debug_Opts,
                        {_State, _Root_Pid, _Timeout, _Old_Debug_Opts}]) ->
     Hdr = "Status for " ++ atom_to_list(?MODULE),
     Log = sys:get_debug(log, New_Debug_Opts, []),
     [{header, Hdr},
-     {data, [{"Status",          SysState},
+     {data, [{"Status",          Sys_State},
              {"Parent",          Parent},
              {"Logged events",   Log},
              {"Debug",           New_Debug_Opts}]
      }];
 
-format_status(terminate, StatusData) -> [{terminate, StatusData}].
+format_status(terminate, Status_Data) -> [{terminate, Status_Data}].
