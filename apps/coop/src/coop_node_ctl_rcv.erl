@@ -12,7 +12,7 @@
 -author(jayn).
 
 %% Graph API
--export([node_ctl_loop/6]).
+-export([node_ctl_loop/7]).
 
 -include("coop_dag.hrl").
 -include("coop_node.hrl").
@@ -21,11 +21,12 @@
 %% Coop Node data is executed using Node_Fn and the results are
 %% passed to one or more of the downstream workers.
 %%----------------------------------------------------------------------
--spec node_ctl_loop(pid(), pid(), task_function(), pid(), pid(), pid()) -> no_return().
+-spec node_ctl_loop(pid(), pid(), coop_init_fn(), coop_task_fn(), pid(), pid(), pid()) -> no_return().
 
-node_ctl_loop(Kill_Switch, Task_Pid, Node_Fn, Trace_Pid, Log_Pid, Reflect_Pid) ->
+node_ctl_loop(Kill_Switch, Task_Pid, Init_Fn, Node_Fn, Trace_Pid, Log_Pid, Reflect_Pid) ->
     node_ctl_loop(#coop_node_state{kill_switch=Kill_Switch, ctl=self(), task=Task_Pid,
-                                   task_fn=Node_Fn, trace=Trace_Pid, log=Log_Pid, reflect=Reflect_Pid}).
+                                   init_fn=Init_Fn, task_fn=Node_Fn,
+                                   trace=Trace_Pid, log=Log_Pid, reflect=Reflect_Pid}).
 
 node_ctl_loop(#coop_node_state{task=Task_Pid, trace=Trace_Pid} = Coop_Node_State) ->
     receive

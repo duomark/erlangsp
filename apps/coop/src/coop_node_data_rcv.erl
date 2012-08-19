@@ -12,7 +12,7 @@
 -author(jayn).
 
 %% Graph API
--export([node_data_loop/3, node_data_loop/4]).
+-export([start_node_data_loop/4]).
 
 %% System message API functions
 -export([
@@ -27,64 +27,68 @@
 %% Coop Node data is executed using Node_Fn and the results are
 %% passed to one or more of the downstream workers.
 %%----------------------------------------------------------------------
--spec node_data_loop(task_function(), downstream_workers(), data_flow_method()) -> no_return().
--spec node_data_loop(task_function(), downstream_workers(), data_flow_method(),
-                     [sys:dbg_opt()]) -> no_return().
+-spec start_node_data_loop(coop_task_fn(), coop_init_fn(), downstream_workers(), data_flow_method()) -> no_return().
+-spec node_data_loop(coop_task_fn(), any(), downstream_workers(), data_flow_method(), [sys:dbg_opt()]) -> no_return().
 
-node_data_loop(Node_Fn, Downstream_Pids, Data_Flow_Method) ->
-    node_data_loop(Node_Fn, Downstream_Pids, Data_Flow_Method, sys:debug_options([])).
+start_node_data_loop(Node_Fn, {Mod, Fun, Args} = _Init_Fn, Downstream_Pids, Data_Flow_Method) ->
+    Init_State = Mod:Fun(Args),
+    node_data_loop(Node_Fn, Init_State, Downstream_Pids, Data_Flow_Method).
 
-node_data_loop(Node_Fn, Downstream_Pids, Data_Flow_Method, Debug_Opts) ->
+node_data_loop(Node_Fn, Node_State, Downstream_Pids, Data_Flow_Method) ->
+    node_data_loop(Node_Fn, Node_State, Downstream_Pids, Data_Flow_Method, sys:debug_options([])).
+
+node_data_loop(Node_Fn, Node_State, Downstream_Pids, Data_Flow_Method, Debug_Opts) ->
     receive
         %% System messages
         {'EXIT', _Parent, Reason} -> exit(Reason);
         {system, From, System_Msg} ->
-            Sys_Args = {Node_Fn, Downstream_Pids, Data_Flow_Method, Debug_Opts},
+            Sys_Args = {Node_Fn, Node_State, Downstream_Pids, Data_Flow_Method, Debug_Opts},
             handle_sys(Sys_Args, From, System_Msg);
         {get_modules, From} ->
             {Task_Module, _Task_Fn} = Node_Fn,
             From ! {modules, [?MODULE, Task_Module]},
-            node_data_loop(Node_Fn, Downstream_Pids, Data_Flow_Method, Debug_Opts);
+            node_data_loop(Node_Fn, Node_State, Downstream_Pids, Data_Flow_Method, Debug_Opts);
 
         %% Node control messages affecting Node_Fn, Pids or Data_Flow_Method...
         {?DAG_TOKEN, ?CTL_TOKEN, Dag_Ctl_Msg} ->
             New_Opts = sys:handle_debug(Debug_Opts, fun debug_coop/3,
-                                        Data_Flow_Method, {in, Dag_Ctl_Msg}),
+                                        {Data_Flow_Method, Node_State}, {in, Dag_Ctl_Msg}),
             New_Downstream_Pids = handle_ctl(Downstream_Pids, Data_Flow_Method, Dag_Ctl_Msg),
-            node_data_loop(Node_Fn, New_Downstream_Pids, Data_Flow_Method, New_Opts);
+            node_data_loop(Node_Fn, Node_State, New_Downstream_Pids, Data_Flow_Method, New_Opts);
 
         %% All data is passed as is and untagged for processing.
         Data ->
             New_Opts = sys:handle_debug(Debug_Opts, fun debug_coop/3,
-                                        Data_Flow_Method, {in, Data}),
-            {Final_Debug_Opts, Maybe_Reordered_Pids}
-                = relay_data(New_Opts, Node_Fn, Data_Flow_Method, Data, Downstream_Pids),
-            node_data_loop(Node_Fn, Maybe_Reordered_Pids, Data_Flow_Method, Final_Debug_Opts)
+                                        {Data_Flow_Method, Node_State}, {in, Data}),
+            {Final_Debug_Opts, Maybe_Reordered_Pids, New_Node_State}
+                = relay_data(New_Opts, Node_Fn, Node_State, Data_Flow_Method, Data, Downstream_Pids),
+            node_data_loop(Node_Fn, New_Node_State, Maybe_Reordered_Pids, Data_Flow_Method, Final_Debug_Opts)
     end.
 
 
 %% Relay data to all Downstream_Pids...
-relay_data(Debug_Opts, {Module, Function} = _Node_Fn, broadcast, Data, Worker_Set) ->
-    Fn_Result = Module:Function(Data),
+relay_data(Debug_Opts, {Module, Function} = _Node_Fn, Node_State, broadcast, Data, Worker_Set) ->
+    {New_Node_State, Fn_Result} = Module:Function(Node_State, Data),
     New_Opts = lists:foldl(fun(To, Opts) ->
                                    To ! Fn_Result,
                                    sys:handle_debug(Opts, fun debug_coop/3,
-                                                    broadcast, {out, Fn_Result, To})
+                                                    {broadcast, New_Node_State}, {out, Fn_Result, To})
                            end, Debug_Opts, queue:to_list(Worker_Set)),
-    {New_Opts, Worker_Set};
+    {New_Opts, Worker_Set, New_Node_State};
 %% Faster routing if only one Downstream_Pid...
-relay_data(Debug_Opts, Node_Fn, Single_Data_Flow_Method, Data, {Pid} = Worker_Set) ->
-    notify_debug_and_return(Debug_Opts, Node_Fn, Single_Data_Flow_Method, Data, Worker_Set, Pid);
+relay_data(Debug_Opts, Node_Fn, Node_State, Single_Data_Flow_Method, Data, {Pid} = Worker_Set) ->
+    notify_debug_and_return(Debug_Opts, Node_Fn, Node_State, Single_Data_Flow_Method, Data, Worker_Set, Pid);
 %% Relay data with random or round_robin has to choose a single destination.
-relay_data(Debug_Opts, Node_Fn, Single_Data_Flow_Method, Data, Worker_Set) ->
+relay_data(Debug_Opts, Node_Fn, Node_State, Single_Data_Flow_Method, Data, Worker_Set) ->
     {Worker, New_Worker_Set} = choose_worker(Worker_Set, Single_Data_Flow_Method),
-    notify_debug_and_return(Debug_Opts, Node_Fn, Single_Data_Flow_Method, Data, New_Worker_Set, Worker).
+    notify_debug_and_return(Debug_Opts, Node_Fn, Node_State, Single_Data_Flow_Method, Data, New_Worker_Set, Worker).
 
 %% Used only for single downstream pid delivery methods.
-notify_debug_and_return(Debug_Opts, {Module, Function}, Data_Flow_Method, Data, Worker_Set, Pid) ->
-    Fn_Result = Pid ! Module:Function(Data),
-    New_Opts = sys:handle_debug(Debug_Opts, fun debug_coop/3, Data_Flow_Method, {out, Fn_Result, Pid}),
-    {New_Opts, Worker_Set}.
+notify_debug_and_return(Debug_Opts, {Module, Function}, Node_State, Data_Flow_Method, Data, Worker_Set, Pid) ->
+    {New_Node_State, Fn_Result} = Module:Function(Node_State, Data),
+    Pid ! Fn_Result,
+    New_Opts = sys:handle_debug(Debug_Opts, fun debug_coop/3, {Data_Flow_Method, New_Node_State}, {out, Fn_Result, Pid}),
+    {New_Opts, Worker_Set, New_Node_State}.
 
 %% Choose a worker randomly without changing the Worker_Set...
 choose_worker(Worker_Set, random) ->
@@ -138,7 +142,7 @@ reply_downstream_pids_as_list(_Not_Random, Downstream_Pids, Ref, From) ->
 -spec system_code_change(term(), module(), atom(), term()) -> {ok, term()}.
 -spec format_status(normal | terminate, list()) -> [proplists:property()].
 
-handle_sys({_Node_Fn, _Downstream_Pids, _Data_Flow_Method, Debug_Opts} = Coop_Internals,
+handle_sys({_Node_Fn, _Node_State, _Downstream_Pids, _Data_Flow_Method, Debug_Opts} = Coop_Internals,
            From, System_Msg) ->
     [Parent | _] = get('$ancestors'),
     sys:handle_system_msg(System_Msg, From, Parent, ?MODULE, Debug_Opts, Coop_Internals).
@@ -147,14 +151,14 @@ debug_coop(Dev, Event, State) ->
     io:format(Dev, "DBG: ~p event = ~p~n", [State, Event]).
 
 system_continue(_Parent, New_Debug_Opts,
-                {Node_Fn, Downstream_Pids, Data_Flow_Method, _Old_Debug_Opts} = _Misc) ->
-    node_data_loop(Node_Fn, Downstream_Pids, Data_Flow_Method, New_Debug_Opts).
+                {Node_Fn, Node_State, Downstream_Pids, Data_Flow_Method, _Old_Debug_Opts} = _Misc) ->
+    node_data_loop(Node_Fn, Node_State, Downstream_Pids, Data_Flow_Method, New_Debug_Opts).
 
 system_terminate(Reason, _Parent, _Debug_Opts, _Misc) -> exit(Reason).
 system_code_change(Misc, _Module, _OldVsn, _Extra) -> {ok, Misc}.
 
-format_status(normal, [_PDict, SysState, Parent, New_Debug_Opts,
-                       {Node_Fn, Downstream_Pids, Data_Flow_Method, _Old_Debug_Opts}]) ->
+format_status(normal, [_PDict, Sys_State, Parent, New_Debug_Opts,
+                       {Node_Fn, Node_State, Downstream_Pids, Data_Flow_Method, _Old_Debug_Opts}]) ->
     Pid_Count = case Data_Flow_Method of
                     random -> tuple_size(Downstream_Pids);
                     _Not_Random ->
@@ -167,8 +171,9 @@ format_status(normal, [_PDict, SysState, Parent, New_Debug_Opts,
     Hdr = "Status for coop_node",
     Log = sys:get_debug(log, New_Debug_Opts, []),
     [{header, Hdr},
-     {data, [{"Status",               SysState},
+     {data, [{"Status",               Sys_State},
              {"Node_Fn",              Node_Fn},
+             {"Node_State",           Node_State},
              {"Downstream_Pid_Count", Pid_Count},
              {"Data_Flow_Method",     Data_Flow_Method},
              {"Parent",               Parent},
@@ -176,4 +181,4 @@ format_status(normal, [_PDict, SysState, Parent, New_Debug_Opts,
              {"Debug",                New_Debug_Opts}]
      }];
 
-format_status(terminate, StatusData) -> [{terminate, StatusData}].
+format_status(terminate, Status_Data) -> [{terminate, Status_Data}].

@@ -3,7 +3,8 @@
           kill_switch :: pid(),
           ctl         :: pid(),
           task        :: pid(),
-          task_fn     :: task_function(),
+          init_fn     :: coop_init_fn(),
+          task_fn     :: coop_task_fn(),
           trace       :: pid(),
           log         :: pid(),
           reflect     :: pid()

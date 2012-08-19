@@ -13,8 +13,10 @@
 
 -type data_flow_method() :: single_data_flow_method() | multiple_data_flow_method().
 
--type task_function() :: {module(), atom()}.
 -type downstream_workers() :: queue().
+
+-type coop_task_fn() :: {module(), atom()}.
+-type coop_init_fn() :: {module(), atom(), any()}.
 
 -type coop_head() :: {coop_head, pid(), pid()}.
 -type coop_node() :: {coop_node, pid(), pid()}.

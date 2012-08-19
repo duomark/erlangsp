@@ -14,7 +14,7 @@
 %% Graph API
 -export([
          %% Create coop_node instances...
-         new/2, new/3,
+         new/3, new/4,
 
          %% Send commands to coop_node control process...
          node_ctl_clone/1, node_ctl_stop/1,
@@ -50,40 +50,39 @@
 %% Create a new coop_node. A coop_node is represented by a pair of
 %% pids: a control process and a data task process.
 %%----------------------------------------------------------------------
-
--spec new(pid(), task_function()) -> coop_node().
--spec new(pid(), task_function(), data_flow_method()) -> coop_node().
+-spec new(pid(), coop_task_fn(), coop_init_fn()) -> coop_node().
+-spec new(pid(), coop_task_fn(), coop_init_fn(), data_flow_method()) -> coop_node().
 
 %% Round robin is default for downstream data distribution.
 %% Optimized for special case of 1 downstream pid.
-new(Kill_Switch, Node_Fn) ->
-    new(Kill_Switch, Node_Fn, round_robin).
+new(Kill_Switch, Node_Fn, Init_Fn) ->
+    new(Kill_Switch, Node_Fn, Init_Fn, round_robin).
 
 %% Override downstream data distribution.
-new(Kill_Switch, {_Task_Mod, _Task_Fn} = Node_Fn, Data_Flow_Method)
-  when is_pid(Kill_Switch), is_atom(_Task_Mod), is_atom(_Task_Fn),
+new(Kill_Switch, {_Task_Mod, _Task_Fn} = Node_Fn, {_Mod, _Fun, _Args} = Init_Fn, Data_Flow_Method)
+  when is_pid(Kill_Switch), is_atom(_Task_Mod), is_atom(_Task_Fn), is_atom(_Mod), is_atom(_Fun),
        (        Data_Flow_Method =:= random
          orelse Data_Flow_Method =:= round_robin
          orelse Data_Flow_Method =:= broadcast   ) ->
 
     %% Start the data task process...
-    Task_Pid = make_data_task_pid(Node_Fn, Data_Flow_Method),
+    Task_Pid = make_data_task_pid(Node_Fn, Init_Fn, Data_Flow_Method),
 
     %% Start support function processes...
     {Trace_Pid, Log_Pid, Reflect_Pid} = make_support_pids(),
 
     %% Start the control process...
-    Ctl_Args = [Kill_Switch, Task_Pid, Node_Fn, Trace_Pid, Log_Pid, Reflect_Pid],
+    Ctl_Args = [Kill_Switch, Task_Pid, Init_Fn, gNode_Fn, Trace_Pid, Log_Pid, Reflect_Pid],
     Ctl_Pid = proc_lib:spawn(coop_node_ctl_rcv, node_ctl_loop, Ctl_Args),
 
     %% Link all component pids to the Kill_Switch pid and return the Ctl and Data pids.
     coop_kill_link_rcv:link_to_kill_switch(Kill_Switch, [Ctl_Pid, Task_Pid, Trace_Pid, Log_Pid, Reflect_Pid]),
     {coop_node, Ctl_Pid, Task_Pid}.
 
-make_data_task_pid(Node_Fn, Data_Flow_Method) ->
+make_data_task_pid(Node_Fn, Init_Fn, Data_Flow_Method) ->
     Worker_Set = case Data_Flow_Method of random -> {}; _Other -> queue:new() end,
-    Task_Args = [Node_Fn, Worker_Set, Data_Flow_Method],
-    proc_lib:spawn(coop_node_data_rcv, node_data_loop, Task_Args).
+    Task_Args = [Node_Fn, Init_Fn, Worker_Set, Data_Flow_Method],
+    proc_lib:spawn(coop_node_data_rcv, start_node_data_loop, Task_Args).
 
 make_support_pids() ->
     Trace_Pid = proc_lib:spawn(?MODULE, echo_loop, ["NTRC"]),
