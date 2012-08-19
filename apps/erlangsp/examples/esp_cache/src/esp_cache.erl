@@ -9,13 +9,14 @@
 %%%------------------------------------------------------------------------------
 -module(esp_cache).
 
--include_lib("erlangsp/include/license_and_copyright.hrl").
+-include("../../../erlangsp/include/license_and_copyright.hrl").
 -author(jayn).
 
 %% Friendly API
 -export([
-         value_request/1,               %% Directory Coop_Node
-         new_datum_node/2, init_datum/1, manage_datum/2   %% Datum Coop_Node
+         new_directory_node/1, init_directory/1, value_request/2,  % Directory Coop_Node
+         %% new_worker_node/1, init_worker/1, make_new_datum/2,       % Directory Coop_Node
+         new_datum_node/2, init_datum/1, manage_datum/2            % Datum Coop_Node
         ]).
 
 
@@ -59,7 +60,8 @@
 %%   3) Sumbitting a function to update a cached datum
 %%
 %%------------------------------------------------------------------------------
--include_lib("coop/include/coop_dag.hrl").
+%% -include_lib("coop/include/coop_dag.hrl").
+-include("../../../../coop/include/coop_dag.hrl").
 
 -define(VALUE, '$$_value').
 -define(MFA,   '$$_mfa').
@@ -77,70 +79,81 @@
 -type fep_request() :: {any(), value_request(), receiver()}.
 -type fetch_cmd() :: lookup | find_else_put.
 
--spec value_request({change_cmd(), change_request()}) -> no_return().
+-spec value_request({}, {change_cmd(), change_request()}) -> no_return().
 -spec change_value({change_cmd(), change_request()}, coop_proc() | undefined) -> no_return().
 -spec return_value({fetch_cmd(), lookup_request() | fep_request()}, coop_proc() | undefined) -> no_return().
 
+%% Create a new directory Coop_Node.
+new_directory_node(Kill_Switch) -> coop_node:new(Kill_Switch, {?MODULE, value_request}, {?MODULE, init_directory, {}}).
+
+%% No state needed.
+init_directory(State) -> State.
+
+
 %% Modify the cached value process and send the new value to a dynamic downstream coop_node...
-value_request({remove,  {Key, _Rcvr}            } = Req) -> change_value(Req, get(Key));
-value_request({add,     {Key, _Chg_Type, _Rcvr} } = Req) -> change_value(Req, get(Key));
-value_request({replace, {Key, _Chg_Type, _Rcvr} } = Req) -> change_value(Req, get(Key));
+value_request({}, {remove,  {Key, _Rcvr}            } = Req) -> change_value(Req, get(Key));
+value_request({}, {add,     {Key, _Chg_Type, _Rcvr} } = Req) -> change_value(Req, get(Key));
+value_request({}, {replace, {Key, _Chg_Type, _Rcvr} } = Req) -> change_value(Req, get(Key));
 
 %% Return the cached value to a dynamic downstream coop_node...
-value_request({lookup,        {Key, _Rcvr}        } = Req) -> return_value(Req, get(Key));
-value_request({find_else_put, {Key, _Type, _Rcvr} } = Req) -> return_value(Req, get(Key));
+value_request({}, {lookup,        {Key, _Rcvr}        } = Req) -> return_value(Req, get(Key));
+value_request({}, {find_else_put, {Key, _Type, _Rcvr} } = Req) -> return_value(Req, get(Key));
 
 %% Expiration of process removes all references to it in process dictionary.
 %%  Key => Coop_Node  +  {Key, Coop_Node} => Node_Data_Pid (the monitored Pid that went down)
-value_request({'DOWN', _Ref, process, Pid, _Reason}) ->
+value_request({}, {'DOWN', _Ref, process, Pid, _Reason}) ->
     [begin erase(Key), erase(Coop_Key) end || {Key, _Coop_Node} = Coop_Key <- get_keys(Pid)],
-    noop;
+    {{}, noop};
 
 %% New dynamically created Coop_Nodes are monitored and placed in the process dictionary.
-value_request({new, Key, {coop_node, _Node_Ctl_Pid, Node_Task_Pid}} = Coop_Node) ->
+value_request({}, {new, Key, {coop_node, _Node_Ctl_Pid, Node_Task_Pid}} = Coop_Node) ->
     erlang:monitor(process, Node_Task_Pid),
     put({Key, Coop_Node}, Node_Task_Pid),
-    put(Key, Coop_Node).
+    put(Key, Coop_Node),
+    {{}, noop}.
 
 
 
 %% Terminate the Coop_Node containing the cached value if there is one...
-change_value({remove,  {_Key, {Ref, Requester}          }}, undefined) -> coop:relay_data(Requester, {Ref, undefined}),    noop;
-change_value({remove,  {_Key, {_Ref, _Rqstr} = Requester}}, Coop_Node) -> coop:relay_data(Coop_Node, {expire, Requester}), noop;
+change_value({remove,  {_Key, {Ref, Requester}          }}, undefined) -> coop:relay_data(Requester, {Ref, undefined}),    {{}, noop};
+change_value({remove,  {_Key, {_Ref, _Rqstr} = Requester}}, Coop_Node) -> coop:relay_data(Coop_Node, {expire, Requester}), {{}, noop};
 
 %% Update the Coop_Node containing the cached value...
-change_value({replace, {_Key, _Chg_Type,    {_Ref, _Rqstr}}  = New_Value }, undefined) -> value_request({add, New_Value});
-change_value({replace, {_Key, {?VALUE, V},  {_Ref, _Rqstr}   = Requester}}, Coop_Node) -> coop:relay_data(Coop_Node, {replace, V, Requester}), noop;
+change_value({replace, {_Key, _Chg_Type,    {_Ref, _Rqstr}}  = New_Value }, undefined) -> value_request({}, {add, New_Value});
+change_value({replace, {_Key, {?VALUE, V},  {_Ref, _Rqstr}   = Requester}}, Coop_Node) -> coop:relay_data(Coop_Node, {replace, V, Requester}), {{}, noop};
 %% But use the downstream worker pool if M:F(A) must be executed to get the value to cache...
-change_value({replace, {_Key, {?MFA, _MFA}, {_Ref, _Rqstr}} = Request},     Coop_Node) -> {replace, Request, Coop_Node};
+change_value({replace, {_Key, {?MFA, _MFA}, {_Ref, _Rqstr}} = Request},     Coop_Node) -> {{}, {replace, Request, Coop_Node}};
 
 %% Create a new dynamic Coop_Node containing the cached value using the downstream worker pool.
-change_value({add, {_Key, _Chg_Type, {_Ref, _Rqstr}}} = Request, undefined) -> Request;
-change_value({add, {_Key, _Chg_Type, {Ref, Requester}}},        _Coop_Node) -> coop:relay_data(Requester, {Ref, defined}), noop.
+change_value({add, {_Key, _Chg_Type, {_Ref, _Rqstr}}} = Request, undefined) -> {{}, Request};
+change_value({add, {_Key, _Chg_Type, {Ref, Requester}}},        _Coop_Node) -> coop:relay_data(Requester, {Ref, defined}), {{}, noop}.
 
 
 %% Send the cached value to the requester.
-return_value({find_else_put, {_Key, _Add_Type, _Req}     = Args}, undefined) -> value_request({add, Args});
-return_value({lookup,        {_Key, {Ref, Requester}}          }, undefined) -> coop:relay_data(Requester, {Ref, undefined}),       noop;
-return_value({_Any_Type,     {_Key, {_Ref, _Rqstr} = Requester}}, Coop_Node) -> coop:relay_data(Coop_Node, {get_value, Requester}), noop.
+return_value({find_else_put, {_Key, _Add_Type, _Req}     = Args}, undefined) -> value_request({}, {add, Args});
+return_value({lookup,        {_Key, {Ref, Requester}}          }, undefined) -> coop:relay_data(Requester, {Ref, undefined}),       {{}, noop};
+return_value({_Any_Type,     {_Key, {_Ref, _Rqstr} = Requester}}, Coop_Node) -> coop:relay_data(Coop_Node, {get_value, Requester}), {{}, noop}.
 
 
 %%========================= M:F(A) Worker =================================
 
+%% Create a new worker Coop_Node.
+%% new_directory_node(Kill_Switch) -> coop_node:new(Kill_Switch, {?MODULE, make_new_datum}, {?MODULE, init_mfa_worker, {}}).
+
 %% %% No state needed.
-%% init_mfa_worker() -> {}.
+%% init_mfa_worker(State) -> State.
 
 
 %% %% Compute the replacement value and forward to the existing Coop_Node...
-%% make_new_datum({}, {replace, {Key, {?MFA, {Mod, Fun, Args}}, {_Ref, _Rqstr} = Requester}}, Coop_Node) ->
+%% make_new_datum({}, {replace, {Key, {?MFA, {Mod, Fun, Args}}, {_Ref, _Rqstr} = Requester}, Coop_Node}) ->
 %%     coop:relay_data(Coop_Node, {replace, Mod:Fun(Args), Requester}),
 %%     {{}, noop};
 
 %% %% Create a new Coop_Node initialized with the value to cache, notifying the Coop_Head directory.
-%% make_new_datum({}, {add, {Key, {?VALUE, V},  {_Ref, _Rqstr} = Requester}}, Coop_Node) ->
+%% make_new_datum({}, {add, {Key, {?VALUE, V},  {_Ref, _Rqstr} = Requester}}) ->
 %%     coop:relay_high_priority_data(Kill_Switch, {new, Key, new_datum_node(Kill_Switch, V)}),
 %%     {{}, noop};
-%% make_new_datum({}, {add, {Key, {?MFA, {Mod, Fun, Args}}, {_Ref, _Rqstr} = Requester}}, Coop_Node) ->
+%% make_new_datum({}, {add, {Key, {?MFA, {Mod, Fun, Args}}, {_Ref, _Rqstr} = Requester}}) ->
 %%     coop:relay_high_priority_data(Kill_Switch, {new, Key, new_datum_node(Kill_Switch, Mod:Fun(Args)}),
 %%     {{}, noop}.
 
