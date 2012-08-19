@@ -1,0 +1,11 @@
+{application, esp_cache,
+ [
+  {id,  "Erlang/SP Coops Cache"},
+  {vsn, "0.0.1"},
+  {description, "Erlang Services Platform Cache Library"},
+  {modules, []},
+  {registered, []},
+  {applications, [kernel, stdlib, sasl, gs, appmon]},
+  {included_applications, [coop]},
+  {env, []}
+]}.
