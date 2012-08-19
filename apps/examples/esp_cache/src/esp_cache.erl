@@ -9,7 +9,7 @@
 %%%------------------------------------------------------------------------------
 -module(esp_cache).
 
--include("../../../erlangsp/include/license_and_copyright.hrl").
+-include_lib("erlangsp/include/license_and_copyright.hrl").
 -author(jayn).
 
 %% Friendly API
@@ -60,8 +60,7 @@
 %%   3) Sumbitting a function to update a cached datum
 %%
 %%------------------------------------------------------------------------------
-%% -include_lib("coop/include/coop_dag.hrl").
--include("../../../../coop/include/coop_dag.hrl").
+-include_lib("coop/include/coop_dag.hrl").
 
 -define(VALUE, '$$_value').
 -define(MFA,   '$$_mfa').
