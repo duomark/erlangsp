@@ -28,7 +28,7 @@
         ]).
 
 %% Internal functions for spawned processes
--export([echo_loop/1, link_loop/0, make_kill_switch/0]).
+-export([echo_loop/1, link_loop/0]).
 
 %%----------------------------------------------------------------------
 %% A Coop Node is a single worker element of a Coop. Every worker
@@ -62,7 +62,7 @@ new(Kill_Switch, Node_Fn) ->
 %% Override downstream data distribution.
 new(Kill_Switch, {_Task_Mod, _Task_Fn} = Node_Fn, Data_Flow_Method)
   when is_pid(Kill_Switch), is_atom(_Task_Mod), is_atom(_Task_Fn),
-       ( Data_Flow_Method =:= random
+       (        Data_Flow_Method =:= random
          orelse Data_Flow_Method =:= round_robin
          orelse Data_Flow_Method =:= broadcast   ) ->
 
@@ -77,7 +77,7 @@ new(Kill_Switch, {_Task_Mod, _Task_Fn} = Node_Fn, Data_Flow_Method)
     Ctl_Pid = proc_lib:spawn(coop_node_ctl_rcv, node_ctl_loop, Ctl_Args),
 
     %% Link all component pids to the Kill_Switch pid and return the Ctl and Data pids.
-    link_to_kill_switch(Kill_Switch, [Ctl_Pid, Task_Pid, Trace_Pid, Log_Pid, Reflect_Pid]),
+    coop_kill_link_rcv:link_to_kill_switch(Kill_Switch, [Ctl_Pid, Task_Pid, Trace_Pid, Log_Pid, Reflect_Pid]),
     {coop_node, Ctl_Pid, Task_Pid}.
 
 make_data_task_pid(Node_Fn, Data_Flow_Method) ->
@@ -90,9 +90,6 @@ make_support_pids() ->
     [Log_Pid, Reflect_Pid]
         = [proc_lib:spawn(?MODULE, echo_loop, [Type]) || Type <- ["NLOG", "NRFL"]],
     {Trace_Pid, Log_Pid, Reflect_Pid}.
-
-link_to_kill_switch(Kill_Switch, Procs) when is_list(Procs) ->
-    Kill_Switch ! {?DAG_TOKEN, ?CTL_TOKEN, {link, Procs}}.
 
 
 %%----------------------------------------------------------------------
@@ -149,7 +146,8 @@ node_task_get_downstream_pids({coop_node, _Node_Ctl_Pid, Node_Task_Pid}) ->
     end.
 
 node_task_add_downstream_pids({coop_node, _Node_Ctl_Pid, Node_Task_Pid}, Pids) when is_list(Pids) ->
-    Node_Task_Pid ! {?DAG_TOKEN, ?CTL_TOKEN, {add_downstream, Pids}}.
+    Node_Task_Pid ! {?DAG_TOKEN, ?CTL_TOKEN, {add_downstream, Pids}},
+    ok.
 
 %% The downstream Pid can be either a coop_node or any other process type.
 %% We need to accept a raw Pid, rather than a Coop_Node.
@@ -164,7 +162,6 @@ node_task_deliver_data(Node_Task_Pid, Data)
 
 -spec echo_loop(string()) -> no_return().
 -spec link_loop() -> no_return().
--spec make_kill_switch() -> pid().
 
 %% Trace, Log and Reflect process receive loop
 echo_loop(Type) ->
@@ -201,6 +198,3 @@ link_loop() ->
             error_logger:error_msg("KILL ~p: Ignoring ~p~n", [self(), _Unknown]),
             link_loop()
     end.
-
-make_kill_switch() -> proc_lib:spawn(?MODULE, link_loop, []).
-

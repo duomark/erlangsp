@@ -55,6 +55,8 @@ end_per_group(_Group, _Config) -> ok.
 
 %% Test module
 -define(TM, coop_node).
+-define(CK, coop_kill_link_rcv).
+
 
 %%----------------------------------------------------------------------
 %% Node Control
@@ -62,12 +64,12 @@ end_per_group(_Group, _Config) -> ok.
 x3(N) -> N * 3.
 
 create_new_coop_node_args() ->
-    Kill_Switch = ?TM:make_kill_switch(),
+    Kill_Switch = ?CK:make_kill_switch(),
     true = is_process_alive(Kill_Switch),
     [Kill_Switch, {?MODULE, x3}].
 
 create_new_coop_node_args(Dist_Type) ->
-    Kill_Switch = ?TM:make_kill_switch(),
+    Kill_Switch = ?CK:make_kill_switch(),
     true = is_process_alive(Kill_Switch),
     [Kill_Switch, {?MODULE, x3}, Dist_Type].
 
