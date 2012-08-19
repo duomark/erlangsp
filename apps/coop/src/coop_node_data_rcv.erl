@@ -59,7 +59,7 @@ node_data_loop(Node_Fn, Node_State, Downstream_Pids, Data_Flow_Method, Debug_Opt
         %% All data is passed as is and untagged for processing.
         Data ->
             New_Opts = sys:handle_debug(Debug_Opts, fun debug_coop/3,
-                                        {Data_Flow_Method, Node_State, Downstream_Pids}, {in, Data}),
+                                        {Data_Flow_Method, Node_State}, {in, Data}),
             {Final_Debug_Opts, Maybe_Reordered_Pids, New_Node_State}
                 = relay_data(New_Opts, Node_Fn, Node_State, Data_Flow_Method, Data, Downstream_Pids),
             node_data_loop(Node_Fn, New_Node_State, Maybe_Reordered_Pids, Data_Flow_Method, Final_Debug_Opts)
