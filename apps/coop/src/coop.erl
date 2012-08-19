@@ -97,14 +97,14 @@ fanout_router_loop(Fn, N, ProcVertices)
 
 %% Relay data is used to deliver Node output to Coop_Head, Coop_Node or raw Pid.
 relay_data(Pid, Data) when is_pid(Pid) ->
-    Pid ! Data;
+    Pid ! Data, ok;
 relay_data({coop_head, _Head_Ctl_Pid, _Head_Data_Pid} = Coop_Head, Data) ->
-    coop_head:send_data_msg(Coop_Head, Data);
+    coop_head:send_data_msg(Coop_Head, Data), ok;
 relay_data({coop_node, _Node_Ctl_Pid, _Node_Task_Pid} = Coop_Node, Data) ->
-    coop_node:node_task_deliver_data(Coop_Node, Data).
+    coop_node:node_task_deliver_data(Coop_Node, Data), ok.
 
 %% High priority only works for a Coop_Head, bypassing all pending Data requests.
 relay_high_priority_data({coop_head, _Head_Ctl_Pid, _Head_Data_Pid} = Coop_Head, Data) ->
-    coop_head:send_priority_data_msg(Coop_Head, Data);
+    coop_head:send_priority_data_msg(Coop_Head, Data), ok;
 relay_high_priority_data(Dest, Data) ->
-    relay_data(Dest, Data).
+    relay_data(Dest, Data), ok.

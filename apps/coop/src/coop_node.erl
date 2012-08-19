@@ -150,9 +150,9 @@ node_task_add_downstream_pids({coop_node, _Node_Ctl_Pid, Node_Task_Pid}, Pids) w
 
 %% Deliver data to a downstream Pid or Coop_Node.
 node_task_deliver_data({coop_node, _Node_Ctl_Pid, Node_Task_Pid}, Data) ->
-    Node_Task_Pid ! Data;
+    Node_Task_Pid ! Data, ok;
 node_task_deliver_data(Pid, Data) when is_pid(Pid) ->
-    Pid ! Data.
+    Pid ! Data, ok.
 
 
 %%----------------------------------------------------------------------

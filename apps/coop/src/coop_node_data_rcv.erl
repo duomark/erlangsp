@@ -59,13 +59,18 @@ node_data_loop(Node_Fn, Node_State, Downstream_Pids, Data_Flow_Method, Debug_Opt
         %% All data is passed as is and untagged for processing.
         Data ->
             New_Opts = sys:handle_debug(Debug_Opts, fun debug_coop/3,
-                                        {Data_Flow_Method, Node_State}, {in, Data}),
+                                        {Data_Flow_Method, Node_State, Downstream_Pids}, {in, Data}),
             {Final_Debug_Opts, Maybe_Reordered_Pids, New_Node_State}
                 = relay_data(New_Opts, Node_Fn, Node_State, Data_Flow_Method, Data, Downstream_Pids),
             node_data_loop(Node_Fn, New_Node_State, Maybe_Reordered_Pids, Data_Flow_Method, Final_Debug_Opts)
     end.
 
 
+%% No Downstream_Pids...
+relay_data(Debug_Opts, {Module, Function} = _Node_Fn, Node_State, _Any_Type, Data, Worker_Set)
+  when Worker_Set =:= {}; Worker_Set =:= {[],[]} ->
+    {New_Node_State, _Fn_Result} = Module:Function(Node_State, Data), %% For side effects only.
+    {Debug_Opts, {}, New_Node_State};
 %% Relay data to all Downstream_Pids...
 relay_data(Debug_Opts, {Module, Function} = _Node_Fn, Node_State, broadcast, Data, Worker_Set) ->
     {New_Node_State, Fn_Result} = Module:Function(Node_State, Data),
@@ -148,7 +153,7 @@ handle_sys({_Node_Fn, _Node_State, _Downstream_Pids, _Data_Flow_Method, Debug_Op
     sys:handle_system_msg(System_Msg, From, Parent, ?MODULE, Debug_Opts, Coop_Internals).
 
 debug_coop(Dev, Event, State) ->
-    io:format(Dev, "DBG: ~p event = ~p~n", [State, Event]).
+    io:format(Dev, "~p DBG: ~p event = ~p~n", [self(), State, Event]).
 
 system_continue(_Parent, New_Debug_Opts,
                 {Node_Fn, Node_State, Downstream_Pids, Data_Flow_Method, _Old_Debug_Opts} = _Misc) ->
