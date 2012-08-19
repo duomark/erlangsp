@@ -1,0 +1,26 @@
+Heriot-Watt
+Patrick Maier
+
+http://www.macs.hw.ac.uk/~pm175/F21DP2/l08_handout.pdf
+
+Parallel Programming Design Patterns + Algorithmic Skeletons
+
+Pipeline
+Parallel Tasks (Sort onto different tasks)
+Task Farm (Farmer does scatter/gather)
+Task Farm (Chain gain doesn't work in erlang)
+Divide & Conquer (Recursive skeleton)
+
+ParaPhrase
+http://backus.di.unipi.it/~marcod/Talks/pdp12.pdf
+
+
+
+OTP Features needed:
+
+  1) Spawn blocks of procs (100-100K)
+  2) Kill blocks of procs (100-1M linked procs)
+  3) Dialyzer to check message send/receive
+       - More procs =:= more msgs and more no_return() functions
+  4) High-speed ACK for synchronous message passing
+
