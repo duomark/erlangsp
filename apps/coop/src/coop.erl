@@ -11,92 +11,34 @@
 -include("../erlangsp/include/license_and_copyright.hrl").
 -author(jayn).
 
-%% Friendly API
--export([pipeline/2, fanout/3, fanout_router/2, fanout_router_loop/3]).
-
 %% Treat Coops like Pids
--export([get_kill_switch/1, relay_data/2, relay_high_priority_data/2]).
+-export([
+         new_pipeline/2, new_fanout/3,
+         get_kill_switch/1, relay_data/2, relay_high_priority_data/2
+        ]).
 
-%% Exports for spawn_link only
--export([pipe_worker/2]).
-
-
-%%----------------------------------------------------------------------
-%% Pipeline patterns
-%%----------------------------------------------------------------------
-pipeline(NameFnPairs, Receiver) ->
-    pipeline(coop_flow:pipeline(NameFnPairs), NameFnPairs, Receiver).
-
-pipeline(CoopFlow, NameFnPairs, Receiver)
-  when is_list(NameFnPairs), is_pid(Receiver) ->
-    Stages = [digraph:vertex(CoopFlow, Name) || {Name, _Fn} <- NameFnPairs],
-    {FirstStage, Pipeline} =
-        lists:foldr(fun(NameFnPair, {NextStage, Workers}) ->
-                            spawn_pipeline_stage(NameFnPair, {NextStage, Workers})
-                    end, {Receiver, []}, Stages),
-    Procs = digraph:new([acyclic]),
-    coop_flow:chain_vertices(Procs, Pipeline),
-    {FirstStage, CoopFlow, Procs}.
-
-spawn_pipeline_stage({_Name, Fn}, {Receiver, Workers}) ->
-    Pid = proc_lib:spawn_link(?MODULE, pipe_worker, [Fn, Receiver]),
-    {Pid, [Pid | Workers]}.
+-include("coop_dag.hrl").
     
-
-%% Workers used to execute graph resident functions.
-pipe_worker(Fn, NextStage) ->
-    receive
-        {'$$stop'} -> ok;
-        Msg ->
-            NextStage ! Fn(Msg),
-            pipe_worker(Fn, NextStage)
-    end.
-
-
-%%----------------------------------------------------------------------
-%% Fanout patterns
-%%----------------------------------------------------------------------
-fanout(Fn, NumWorkers, FanInReceiver)
-  when is_function(Fn), is_integer(NumWorkers), NumWorkers > 0,
-       is_pid(FanInReceiver) ->
-    fanout(coop_flow:fanout(Fn, NumWorkers, FanInReceiver), NumWorkers).
-    
-fanout(CoopFlow, NumWorkers)
-  when is_integer(NumWorkers), NumWorkers > 0 ->
-    {inbound, Fn} = digraph:vertex(CoopFlow, inbound),
-    {outbound, FanInReceiver} = digraph:vertex(CoopFlow, outbound),
-    _Vertices = digraph:out_neighbours(CoopFlow, inbound),
-    ProcVertices = [proc_lib:spawn_link(?MODULE, fanout_worker, [Fn, FanInReceiver])
-                    || _N <- lists:seq(1, NumWorkers)],
-    _InPid = proc_lib:spawn_link(?MODULE, fanout_router, [Fn, ProcVertices]).
-
-fanout_router(Fn, ProcVertices) when is_function(Fn), is_list(ProcVertices) ->
-    fanout_router_loop(Fn, 1, list_to_tuple(ProcVertices)).
-
-fanout_router_loop(Fn, N, ProcVertices)
-  when is_function(Fn), is_integer(N), N > 0, is_tuple(ProcVertices) ->
-    receive
-        {'$$stop'} -> ok;
-        Msg ->
-            _NewN = case N >= tuple_size(ProcVertices) of
-                        false -> 
-                            element(N, ProcVertices) ! Fn(Msg),
-                            fanout_router_loop(Fn, N, ProcVertices);
-                        true  ->
-                            element(1, ProcVertices) ! Fn(Msg),
-                            fanout_router_loop(Fn, 2, ProcVertices)
-                    end
-    end,
-
-    _InPid = proc_lib:spawn_link(?MODULE, fanout_router, [Fn, ProcVertices]).
-
-
-
 
 %%----------------------------------------------------------------------
 %% Utilities to treat Coops like Pids
 %%----------------------------------------------------------------------
+-spec new_pipeline([#coop_dag_node{}], coop_receiver()) -> coop_head().
+-spec new_fanout(#coop_dag_node{}, [#coop_dag_node{}], coop_receiver()) -> coop_head().
 
+%% Create a new coop
+new_pipeline([#coop_dag_node{} | _More] = Node_Fns, Receiver) ->
+    Body_Kill_Switch = coop_kill_link_rcv:make_kill_switch(),
+    {Coop_Root_Node, _Pipeline_Graph, _Coops_Graph} = pipeline(Body_Kill_Switch, Node_Fns, Receiver),
+    Head_Kill_Switch = coop_kill_link_rcv:make_kill_switch(),
+    coop_head:new(Head_Kill_Switch, Coop_Root_Node).
+
+new_fanout(#coop_dag_node{} = Router_Fn, [#coop_dag_node{}] = Workers, Receiver) ->
+    Body_Kill_Switch = coop_kill_link_rcv:make_kill_switch(),
+    {Coop_Root_Node, _Fanout_Graph, _Coops_Graph} = fanout(Body_Kill_Switch, Router_Fn, Workers, Receiver),
+    Head_Kill_Switch = coop_kill_link_rcv:make_kill_switch(),
+    coop_head:new(Head_Kill_Switch, Coop_Root_Node).
+    
 %% The Coop_Head has reference to the Kill_Switch process.
 get_kill_switch(Coop_Head) ->
     coop_head:get_kill_switch(Coop_Head).
@@ -114,3 +56,64 @@ relay_high_priority_data({coop_head, _Head_Ctl_Pid, _Head_Data_Pid} = Coop_Head,
     coop_head:send_priority_data_msg(Coop_Head, Data), ok;
 relay_high_priority_data(Dest, Data) ->
     relay_data(Dest, Data), ok.
+
+
+%%----------------------------------------------------------------------
+%% Pipeline patterns (can only use serial round_robin dataflow method)
+%%----------------------------------------------------------------------
+pipeline(Kill_Switch, [#coop_dag_node{} | _More] = Node_Fns, Receiver) ->
+    Pipeline_Graph = coop_flow:pipeline(Node_Fns),
+    Vertex_List = [digraph:vertex(Pipeline_Graph, Name) || #coop_dag_node{name=Name} <- Node_Fns],
+    pipeline(Kill_Switch, Pipeline_Graph, Vertex_List, Receiver).
+
+pipeline(Kill_Switch, Pipeline_Template_Graph, Left_To_Right_Stages, Receiver) ->
+    Coops_Graph = digraph:new([acyclic]),
+    digraph:add_vertex(Coops_Graph, outbound, Receiver),
+    {First_Stage_Coop_Node, _Second_Stage_Vertex_Name} =
+        lists:foldr(fun(Node_Name_Fn_Pair, {_NextStage, _Downstream_Vertex} = Acc) ->
+                            spawn_pipeline_stage(Kill_Switch, Coops_Graph, Node_Name_Fn_Pair, Acc)
+                    end, {Receiver, outbound}, Left_To_Right_Stages),
+
+    %% Return the first coop_node, template graph and live coop_node graph.
+    {First_Stage_Coop_Node, Pipeline_Template_Graph, Coops_Graph}.
+
+spawn_pipeline_stage(Kill_Switch, Coops, {Name, #coop_node_fn{init=Init_Fn, task=Task_Fn}},
+                     {Receiver, Downstream_Vertex_Name}) ->
+    Coop_Node = coop_node:new(Kill_Switch, Task_Fn, Init_Fn),         % Defaults to round_robin out
+    coop_node:node_task_add_downstream_pids(Coop_Node, [Receiver]),   % And just 1 receiver
+    digraph:add_vertex(Coops, Name, Coop_Node),
+    digraph:add_edge(Coops, Name, Downstream_Vertex_Name),
+    {Coop_Node, Name}.
+    
+
+%%----------------------------------------------------------------------
+%% Fanout patterns
+%%----------------------------------------------------------------------
+fanout(Kill_Switch, #coop_dag_node{} = Router_Fn, [#coop_dag_node{}] = Workers, Receiver) ->
+    Fanout_Graph = coop_flow:fanout(Router_Fn, Workers, Receiver),
+    fanout(Kill_Switch, Fanout_Graph).
+    
+fanout(Kill_Switch, Fanout_Template_Graph) ->
+    Coops_Graph = digraph:new([acyclic]),
+    {inbound, #coop_node_fn{init=Inbound_Init_Fn, task=Inbound_Task_Fn, flow=Inbound_Dataflow}}
+        = digraph:vertex(Coops_Graph, inbound),
+    Inbound_Node = coop_node:new(Kill_Switch, Inbound_Task_Fn, Inbound_Init_Fn, Inbound_Dataflow),
+    digraph:add_vertex(Coops_Graph, inbound, Inbound_Node),
+    Worker_Nodes = [begin
+                        Node = coop_node:new(Kill_Switch, Task_Fn, Init_Fn),   % Default to round_robin out
+                        digraph:add_vertex(Coops_Graph, Name, Node),
+                        digraph:add_edge(Coops_Graph, inbound, Name),
+                        {Name, Node}
+                    end || {Name, #coop_node_fn{init=Init_Fn, task=Task_Fn, flow=_Dataflow}}
+                               <- digraph:out_neighbours(Fanout_Template_Graph, inbound)],
+    coop_node:node_task_add_downstream_pids(Inbound_Node, Worker_Nodes),
+    case digraph:vertex(Fanout_Template_Graph, outbound) of
+        false -> noop;
+        {outbound, Receiver} ->
+            digraph:add_vertex(Coops_Graph, outbound, Receiver),
+            [begin
+                 coop_node:node_task_add_downstream_pids(W, [Receiver]),
+                 digraph:add_edge(Coops_Graph, Name, outbound)
+             end || {Name, W} <- Worker_Nodes]
+    end,
+    {Inbound_Node, Fanout_Template_Graph, Coops_Graph}.

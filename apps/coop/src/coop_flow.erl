@@ -12,20 +12,23 @@
 -author(jayn).
 
 %% Friendly API
--export([pipeline/1, chain_vertices/2,
-         fanout/3, fanout/2]).
+-export([pipeline/1, chain_vertices/2, fanout/3]).
+
+-include("coop_dag.hrl").
+
 
 %%----------------------------------------------------------------------
 %% Pipeline patterns
 %%   pipeline flow is Graph<{Name, Fn}, ...>
 %%----------------------------------------------------------------------
-pipeline(NameFnPairs) when is_list(NameFnPairs) ->
-    case length(NameFnPairs) > 1 of
-        true ->
-            Graph = digraph:new([acyclic]),
-            Vertices = [digraph:add_vertex(Graph, Name, Fn) || {Name, Fn} <- NameFnPairs],
-            chain_vertices(Graph, Vertices)
-    end.
+-spec pipeline([#coop_dag_node{}]) -> digraph().
+-spec chain_vertices(digraph(), [digraph:vertex()]) -> digraph().
+
+pipeline([#coop_dag_node{} | _More] = Node_Fns) ->
+    Graph = digraph:new([acyclic]),
+    Vertices = [digraph:add_vertex(Graph, Name, Fn)
+                || #coop_dag_node{name=Name, label=Fn} <- Node_Fns],
+    chain_vertices(Graph, Vertices).
 
 chain_vertices(Graph, [])   -> Graph;
 chain_vertices(Graph, [_H]) -> Graph;
@@ -38,21 +41,24 @@ chain_vertices(Graph, [H1,H2 | T]) ->
 %% Fanout patterns
 %%   fanout flow is Graph<{Name, Fn} => [... {Name, Fn} ...] => {Name, Fn}>
 %%----------------------------------------------------------------------
-fanout(Fn, NumWorkers, FanInReceiver)
-  when is_function(Fn), is_integer(NumWorkers), NumWorkers > 0,
-       is_pid(FanInReceiver) ->
+-spec fanout(#coop_dag_node{}, [#coop_dag_node{}], coop_receiver()) -> digraph().
+
+fanout(#coop_dag_node{name=Name, label=Node_Fn} = _Router_Fn,
+       [#coop_dag_node{}] = Workers, Fan_In_Receiver) ->
     Graph = digraph:new([acyclic]),
-    Inbound =  digraph:add_vertex(Graph, inbound, Fn),
-    Outbound = digraph:add_vertex(Graph, outbound, FanInReceiver),
-    _Workers = [begin
-                    V = digraph:add_vertex(Graph),
-                    digraph:add_edge(Graph, Inbound, V),
-                    digraph:add_edge(Graph, V, Outbound),
-                    V
-                end || _N <- lists:seq(1, NumWorkers)],
+    Inbound = make_named_vertex(Graph, Name, Node_Fn, inbound),
+    Outbound = case Fan_In_Receiver of
+                   none  -> none;
+                   _Node -> digraph:add_vertex(Graph, outbound, Fan_In_Receiver)
+               end,
+    _Frontier = [begin
+                     V = make_named_vertex(Graph, FName, FNode_Fn, worker),
+                     digraph:add_edge(Graph, Inbound, V),
+                     Outbound =:= none orelse digraph:add_edge(Graph, V, Outbound),
+                     V
+                 end || #coop_dag_node{name=FName, label=FNode_Fn} <- Workers],
     Graph.
 
-fanout(Fn, FollowOnReceivers)
-  when is_function(Fn), is_list(FollowOnReceivers) -> 
-    ok.
-
+make_named_vertex(Graph, Name, Fn, Default_Name) ->
+    Vertex_Name = case Name of undefined -> Default_Name; Name -> Name end,
+    digraph:add_vertex(Graph, Vertex_Name, Fn).

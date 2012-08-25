@@ -18,8 +18,22 @@
 -type coop_task_fn() :: {module(), atom()}.
 -type coop_init_fn() :: {module(), atom(), any()}.
 
+-record(coop_node_fn, {
+          init               :: coop_init_fn(),
+          task               :: coop_task_fn(),
+          flow = round_robin :: data_flow_method()
+         }).
+
+-record(coop_dag_node, {
+          name  :: string(),
+          label :: #coop_node_fn{}
+         }).
+
 -type coop_head() :: {coop_head, pid(), pid()}.
 -type coop_node() :: {coop_node, pid(), pid()}.
+
+-type coop_receiver() :: pid() | coop_head() | coop_node() | none.
+
 
 %% Coop internal tokens are uppercase prefixed with '$$_'.
 %% Applications should avoid using this prefix for atoms.
