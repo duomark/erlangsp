@@ -72,7 +72,7 @@ new(Kill_Switch, {_Task_Mod, _Task_Fn} = Node_Fn, {_Mod, _Fun, _Args} = Init_Fn,
     {Trace_Pid, Log_Pid, Reflect_Pid} = make_support_pids(),
 
     %% Start the control process...
-    Ctl_Args = [Kill_Switch, Task_Pid, Init_Fn, gNode_Fn, Trace_Pid, Log_Pid, Reflect_Pid],
+    Ctl_Args = [Kill_Switch, Task_Pid, Init_Fn, Node_Fn, Trace_Pid, Log_Pid, Reflect_Pid],
     Ctl_Pid = proc_lib:spawn(coop_node_ctl_rcv, node_ctl_loop, Ctl_Args),
 
     %% Link all component pids to the Kill_Switch pid and return the Ctl and Data pids.
