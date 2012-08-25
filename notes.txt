@@ -24,3 +24,9 @@ OTP Features needed:
        - More procs =:= more msgs and more no_return() functions
   4) High-speed ACK for synchronous message passing
 
+
+Examples to build:
+
+  1) Distributed Cache
+  2) HTTP Parsing / WebMachine
+  3) Kademlia DHT (TeleHash / Singly / Locker Project)
