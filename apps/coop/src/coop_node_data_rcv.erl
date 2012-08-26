@@ -75,7 +75,7 @@ relay_data(Debug_Opts, {Module, Function} = _Node_Fn, Node_State, _Any_Type, Dat
 relay_data(Debug_Opts, {Module, Function} = _Node_Fn, Node_State, broadcast, Data, Worker_Set) ->
     {New_Node_State, Fn_Result} = Module:Function(Node_State, Data),
     New_Opts = lists:foldl(fun(To, Opts) ->
-                                   To ! Fn_Result,
+                                   coop:relay_data(To, Fn_Result),
                                    sys:handle_debug(Opts, fun debug_coop/3,
                                                     {broadcast, New_Node_State}, {out, Fn_Result, To})
                            end, Debug_Opts, queue:to_list(Worker_Set)),
@@ -91,7 +91,7 @@ relay_data(Debug_Opts, Node_Fn, Node_State, Single_Data_Flow_Method, Data, Worke
 %% Used only for single downstream pid delivery methods.
 notify_debug_and_return(Debug_Opts, {Module, Function}, Node_State, Data_Flow_Method, Data, Worker_Set, Pid) ->
     {New_Node_State, Fn_Result} = Module:Function(Node_State, Data),
-    Pid ! Fn_Result,
+    coop:relay_data(Pid, Fn_Result),
     New_Opts = sys:handle_debug(Debug_Opts, fun debug_coop/3, {Data_Flow_Method, New_Node_State}, {out, Fn_Result, Pid}),
     {New_Opts, Worker_Set, New_Node_State}.
 

@@ -17,6 +17,9 @@
          get_kill_switch/1, relay_data/2, relay_high_priority_data/2
         ]).
 
+%% For testing purposes only.
+-export([pipeline/3, fanout/4]).
+
 -include("coop_dag.hrl").
     
 

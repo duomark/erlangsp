@@ -44,7 +44,7 @@ chain_vertices(Graph, [H1,H2 | T]) ->
 -spec fanout(#coop_dag_node{}, [#coop_dag_node{}], coop_receiver()) -> digraph().
 
 fanout(#coop_dag_node{name=Name, label=Node_Fn} = _Router_Fn,
-       [#coop_dag_node{}] = Workers, Fan_In_Receiver) ->
+       [#coop_dag_node{}|_More] = Workers, Fan_In_Receiver) ->
     Graph = digraph:new([acyclic]),
     Inbound = make_named_vertex(Graph, Name, Node_Fn, inbound),
     Outbound = case Fan_In_Receiver of
@@ -58,6 +58,7 @@ fanout(#coop_dag_node{name=Name, label=Node_Fn} = _Router_Fn,
                      V
                  end || #coop_dag_node{name=FName, label=FNode_Fn} <- Workers],
     Graph.
+
 
 make_named_vertex(Graph, Name, Fn, Default_Name) ->
     Vertex_Name = case Name of undefined -> Default_Name; Name -> Name end,
