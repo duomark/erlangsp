@@ -54,5 +54,5 @@ realclean: clean relclean
 test: all
 	make ct
 
-ct: 
+ct: all
 	@(cd apps/ctest; ct_run -spec coop.spec -pa ../coop/ebin -pa ../../deps/*/ebin)
