@@ -92,31 +92,51 @@ spawn_pipeline_stage(Kill_Switch, Coops, {Name, #coop_node_fn{init=Init_Fn, task
 %%----------------------------------------------------------------------
 %% Fanout patterns
 %%----------------------------------------------------------------------
-fanout(Kill_Switch, #coop_dag_node{} = Router_Fn, [#coop_dag_node{}] = Workers, Receiver) ->
+fanout(Kill_Switch, #coop_dag_node{} = Router_Fn, [#coop_dag_node{} | _More] = Workers, Receiver) ->
     Fanout_Graph = coop_flow:fanout(Router_Fn, Workers, Receiver),
     fanout(Kill_Switch, Fanout_Graph).
     
 fanout(Kill_Switch, Fanout_Template_Graph) ->
     Coops_Graph = digraph:new([acyclic]),
     {inbound, #coop_node_fn{init=Inbound_Init_Fn, task=Inbound_Task_Fn, flow=Inbound_Dataflow}}
-        = digraph:vertex(Coops_Graph, inbound),
+        = digraph:vertex(Fanout_Template_Graph, inbound),
     Inbound_Node = coop_node:new(Kill_Switch, Inbound_Task_Fn, Inbound_Init_Fn, Inbound_Dataflow),
     digraph:add_vertex(Coops_Graph, inbound, Inbound_Node),
-    Worker_Nodes = [begin
-                        Node = coop_node:new(Kill_Switch, Task_Fn, Init_Fn),   % Default to round_robin out
-                        digraph:add_vertex(Coops_Graph, Name, Node),
-                        digraph:add_edge(Coops_Graph, inbound, Name),
-                        {Name, Node}
-                    end || {Name, #coop_node_fn{init=Init_Fn, task=Task_Fn, flow=_Dataflow}}
-                               <- digraph:out_neighbours(Fanout_Template_Graph, inbound)],
+    {Has_Fan_In, Rcvr} = case digraph:vertex(Fanout_Template_Graph, outbound) of
+                             false -> {false, none};
+                             {outbound, Receiver} ->
+                                 digraph:add_vertex(Coops_Graph, outbound, Receiver),
+                                 {true, Receiver}
+                         end,
+    Worker_Nodes = [add_fanout_worker_node(Kill_Switch, Has_Fan_In, Rcvr, Fanout_Template_Graph, Vertex_Name, Coops_Graph)
+
+                    %% begin
+                    %%     {Name, #coop_node_fn{init=Init_Fn, task=Task_Fn, flow=_Dataflow}}
+                    %%         = digraph:vertex(Fanout_Template_Graph, Vertex_Name),
+                    %%     Node = coop_node:new(Kill_Switch, Task_Fn, Init_Fn, Dataflow),
+                    %%     digraph:add_vertex(Coops_Graph, Name, Node),
+                    %%     digraph:add_edge(Coops_Graph, inbound, Name),
+                    %%     Has_Fan_In andalso begin
+                    %%                            digraph:add_edge(Coops_Graph, Name, outbound),
+                    %%                            coop_node:node_task_add_downstream_pids(Node, [Receiver])
+                    %%                        end,
+                    %%     Node
+                    %% end 
+
+                    || Vertex_Name <- digraph:out_neighbours(Fanout_Template_Graph, inbound)],
+
     coop_node:node_task_add_downstream_pids(Inbound_Node, Worker_Nodes),
-    case digraph:vertex(Fanout_Template_Graph, outbound) of
-        false -> noop;
-        {outbound, Receiver} ->
-            digraph:add_vertex(Coops_Graph, outbound, Receiver),
-            [begin
-                 coop_node:node_task_add_downstream_pids(W, [Receiver]),
-                 digraph:add_edge(Coops_Graph, Name, outbound)
-             end || {Name, W} <- Worker_Nodes]
-    end,
     {Inbound_Node, Fanout_Template_Graph, Coops_Graph}.
+
+add_fanout_worker_node(Kill_Switch, Has_Fan_In, Receiver, Template_Graph, Vertex_Name, Coops_Graph) ->
+    {Vertex_Name, #coop_node_fn{init=Init_Fn, task=Task_Fn}}
+        = digraph:vertex(Template_Graph, Vertex_Name),
+    Coop_Node = coop_node:new(Kill_Switch, Task_Fn, Init_Fn),  % Default to round-robin
+    digraph:add_vertex(Coops_Graph, Vertex_Name, Coop_Node),
+    digraph:add_edge(Coops_Graph, inbound, Vertex_Name),
+    Has_Fan_In andalso begin
+                           digraph:add_edge(Coops_Graph, Vertex_Name, outbound),
+                           coop_node:node_task_add_downstream_pids(Coop_Node, [Receiver])
+                       end,
+    Coop_Node.
+    

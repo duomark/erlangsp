@@ -9,14 +9,20 @@
 
 %% Pipeline and fanout tests
 -export([pipeline_flow/1, pipeline_failure/1, pipeline/1,
-         fanout_failure/1, fanout_flow/1]).
--export([init/1, plus2/2, times3/2, minus5/2]).
+         fanout_flow/1, fanout_failure/1,
+         fanout_round_robin/1
+        ]).
+
+%% Node task and init functions
+-export([init/1, plus2/2, times3/2, minus5/2, rr_init/1, rr_inc/2]).
 
 %% Test procs for validating process message output
--export([receive_pipe_results/0]).
+-export([receive_pipe_results/0, receive_round_robin_results/2]).
  
 all() -> [pipeline_flow, pipeline_failure, pipeline, 
-          fanout_failure, fanout_flow].
+          fanout_flow, fanout_failure,
+          fanout_round_robin
+         ].
 
 init_per_suite(Config) -> Config.
 end_per_suite(_Config) -> ok.
@@ -25,6 +31,15 @@ end_per_suite(_Config) -> ok.
 %%----------------------------------------------------------------------
 %% Pipeline patterns
 %%----------------------------------------------------------------------
+pipeline_failure(_Config) ->
+    try coop_flow:pipeline(a)
+    catch error:function_clause -> ok
+    end,
+
+    try coop_flow:pipeline([a])
+    catch error:function_clause -> ok
+    end.
+
 init([f1]) -> f1;
 init([f2]) -> f2;
 init([f3]) -> f3.
@@ -54,7 +69,6 @@ example_pipeline_fns() ->
      #coop_dag_node{name=c, label=F3_Node_Fn}
     ].
 
-
 pipeline_flow(_Config) ->
     Pipe_Stages = example_pipeline_fns(),
     Pipeline = coop_flow:pipeline(Pipe_Stages),
@@ -76,7 +90,6 @@ pipeline_flow(_Config) ->
     B = digraph:vertex(Pipeline, b),
     C = digraph:vertex(Pipeline, c).
 
-
 pipeline(_Config) ->
     Pid = spawn_link(?MODULE, receive_pipe_results, []),
     Pipe_Stages = example_pipeline_fns(),
@@ -87,23 +100,8 @@ pipeline(_Config) ->
     coop:relay_data(First_Stage_Node, 7),
     timer:sleep(100),
     ok = fetch_results(Pid).
-
-pipeline_failure(_Config) ->
-    try coop_flow:pipeline(a)
-    catch error:function_clause -> ok
-    end,
-
-    try coop_flow:pipeline([a])
-    catch error:function_clause -> ok
-    end.
     
 
-fetch_results(Pid) ->
-    Pid ! {fetch, self()},
-    receive Any -> Any
-    after 3000 -> timeout_waiting
-    end.
-    
 receive_pipe_results() ->
     receive
         3 * (7+2) - 5 -> hold_results(ok);
@@ -111,16 +109,19 @@ receive_pipe_results() ->
     after 3000 -> hold_results(timeout)
     end.
 
-hold_results(Results) ->
-    receive
-        {fetch, From} -> From ! Results
-    after 3000 -> timeout
-    end.
-
 
 %%----------------------------------------------------------------------
 %% Fanout patterns
 %%----------------------------------------------------------------------
+fanout_failure(_Config) ->
+    try coop_flow:fanout(a, 8, self())
+    catch error:function_clause -> ok
+    end,
+    
+    try coop_flow:fanout(#coop_dag_node{}, a, self())
+    catch error:function_clause -> ok
+    end.
+
 check_fanout_vertex(Graph, #coop_dag_node{label=Label}, inbound = Name, InDegree, OutDegree) ->
     {Name, Label} = digraph:vertex(Graph, Name),
     InDegree   = digraph:in_degree(Graph, Name),
@@ -138,15 +139,6 @@ check_fanout_vertex(Graph, _N, {Name, _Fn}, 1, 1) ->
     [inbound] =  digraph:in_neighbours(Graph, Name),
     [outbound] = digraph:out_neighbours(Graph, Name).
 
-fanout_failure(_Config) ->
-    try coop_flow:fanout(a, 8, self())
-    catch error:function_clause -> ok
-    end,
-    
-    try coop_flow:fanout(#coop_dag_node{}, a, self())
-    catch error:function_clause -> ok
-    end.
-
 fanout_flow(_Config) ->
     Self = self(),
     Router_Fn = #coop_dag_node{
@@ -163,3 +155,57 @@ fanout_flow(_Config) ->
     check_fanout_vertex(Coop_Flow, Router_Fn, inbound,  0, 8),
     check_fanout_vertex(Coop_Flow, Self, outbound, 8, 0),
     [check_fanout_vertex(Coop_Flow, 8, {N,#coop_node_fn{}}, 1, 1) || N <- lists:seq(1,8)].
+
+fanout_round_robin(_Config) ->
+    Num_Results = 6,
+    Kill_Switch = coop_kill_link_rcv:make_kill_switch(),
+    Receiver_Pid = spawn_link(?MODULE, receive_round_robin_results, [Num_Results, []]),
+    Router_Fn = #coop_dag_node{
+      name = inbound,
+      label = #coop_node_fn{init={?MODULE, rr_init, [0]}, task={?MODULE, rr_inc}}
+     },
+    Worker_Node_Fns = [#coop_dag_node{
+                          name = "inc_by_" ++ integer_to_list(N),
+                          label = #coop_node_fn{init={?MODULE, rr_init, [N]}, task={?MODULE, rr_inc}}}
+                       || N <- lists:seq(1,3)],
+    {Root_Coop_Node, _Template_Graph, Coops_Graph}
+        = coop:fanout(Kill_Switch, Router_Fn, Worker_Node_Fns, Receiver_Pid),
+    Fanout_Stats = digraph:info(Coops_Graph),
+    acyclic = proplists:get_value(cyclicity, Fanout_Stats),
+    5 = digraph:no_vertices(Coops_Graph),
+    6 = digraph:no_edges(Coops_Graph),
+    [coop:relay_data(Root_Coop_Node, 5) || _N <- lists:seq(1,Num_Results)],
+    timer:sleep(100),
+    Results6 = fetch_results(Receiver_Pid),
+    6 = length(Results6),
+    Results4 = Results6 -- [6,6],
+    4 = length(Results4),
+    Results2 = Results4 -- [7,7],
+    2 = length(Results2),
+    Results0 = Results2 -- [8,8],
+    0 = length(Results0).
+    
+rr_init([Inc_Amt]) -> Inc_Amt.
+rr_inc(Inc_Amt, Value) -> {Inc_Amt, Value + Inc_Amt}.
+    
+receive_round_robin_results(0, Acc) -> hold_results(lists:reverse(Acc));
+receive_round_robin_results(N, Acc) ->
+    receive Any -> receive_round_robin_results(N-1, [Any | Acc])
+    after  3000 -> hold_results([timeout | Acc])
+    end.
+
+
+%%----------------------------------------------------------------------
+%% Utilities for receiving coop results
+%%----------------------------------------------------------------------
+fetch_results(Pid) ->
+    Pid ! {fetch, self()},
+    receive Any -> Any
+    after 3000 -> timeout_fetching
+    end.
+
+hold_results(Results) ->
+    receive
+        {fetch, From} -> From ! Results
+    after 3000 -> timeout
+    end.
