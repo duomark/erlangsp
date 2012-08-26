@@ -109,22 +109,7 @@ fanout(Kill_Switch, Fanout_Template_Graph) ->
                                  {true, Receiver}
                          end,
     Worker_Nodes = [add_fanout_worker_node(Kill_Switch, Has_Fan_In, Rcvr, Fanout_Template_Graph, Vertex_Name, Coops_Graph)
-
-                    %% begin
-                    %%     {Name, #coop_node_fn{init=Init_Fn, task=Task_Fn, flow=_Dataflow}}
-                    %%         = digraph:vertex(Fanout_Template_Graph, Vertex_Name),
-                    %%     Node = coop_node:new(Kill_Switch, Task_Fn, Init_Fn, Dataflow),
-                    %%     digraph:add_vertex(Coops_Graph, Name, Node),
-                    %%     digraph:add_edge(Coops_Graph, inbound, Name),
-                    %%     Has_Fan_In andalso begin
-                    %%                            digraph:add_edge(Coops_Graph, Name, outbound),
-                    %%                            coop_node:node_task_add_downstream_pids(Node, [Receiver])
-                    %%                        end,
-                    %%     Node
-                    %% end 
-
                     || Vertex_Name <- digraph:out_neighbours(Fanout_Template_Graph, inbound)],
-
     coop_node:node_task_add_downstream_pids(Inbound_Node, Worker_Nodes),
     {Inbound_Node, Fanout_Template_Graph, Coops_Graph}.
 

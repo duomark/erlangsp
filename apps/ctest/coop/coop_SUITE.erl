@@ -10,7 +10,7 @@
 %% Pipeline and fanout tests
 -export([pipeline_flow/1, pipeline_failure/1, pipeline/1,
          fanout_flow/1, fanout_failure/1,
-         fanout_round_robin/1
+         fanout_round_robin/1, fanout_broadcast/1
         ]).
 
 %% Node task and init functions
@@ -21,7 +21,7 @@
  
 all() -> [pipeline_flow, pipeline_failure, pipeline, 
           fanout_flow, fanout_failure,
-          fanout_round_robin
+          fanout_round_robin, fanout_broadcast
          ].
 
 init_per_suite(Config) -> Config.
@@ -156,25 +156,28 @@ fanout_flow(_Config) ->
     check_fanout_vertex(Coop_Flow, Self, outbound, 8, 0),
     [check_fanout_vertex(Coop_Flow, 8, {N,#coop_node_fn{}}, 1, 1) || N <- lists:seq(1,8)].
 
-fanout_round_robin(_Config) ->
-    Num_Results = 6,
+make_fanout_coop(Dataflow_Type, Num_Workers, Receiver_Pid) ->
     Kill_Switch = coop_kill_link_rcv:make_kill_switch(),
-    Receiver_Pid = spawn_link(?MODULE, receive_round_robin_results, [Num_Results, []]),
     Router_Fn = #coop_dag_node{
       name = inbound,
-      label = #coop_node_fn{init={?MODULE, rr_init, [0]}, task={?MODULE, rr_inc}}
+      label = #coop_node_fn{init={?MODULE, rr_init, [0]}, task={?MODULE, rr_inc}, flow=Dataflow_Type}
      },
     Worker_Node_Fns = [#coop_dag_node{
                           name = "inc_by_" ++ integer_to_list(N),
                           label = #coop_node_fn{init={?MODULE, rr_init, [N]}, task={?MODULE, rr_inc}}}
-                       || N <- lists:seq(1,3)],
-    {Root_Coop_Node, _Template_Graph, Coops_Graph}
-        = coop:fanout(Kill_Switch, Router_Fn, Worker_Node_Fns, Receiver_Pid),
+                       || N <- lists:seq(1, Num_Workers)],
+    coop:fanout(Kill_Switch, Router_Fn, Worker_Node_Fns, Receiver_Pid).
+    
+fanout_round_robin(_Config) ->
+    Num_Results = 6,
+    Num_Workers = 3,
+    Receiver_Pid = spawn_link(?MODULE, receive_round_robin_results, [Num_Results, []]),
+    {Root_Coop_Node, _Template_Graph, Coops_Graph} = make_fanout_coop(round_robin, Num_Workers, Receiver_Pid),
     Fanout_Stats = digraph:info(Coops_Graph),
     acyclic = proplists:get_value(cyclicity, Fanout_Stats),
     5 = digraph:no_vertices(Coops_Graph),
     6 = digraph:no_edges(Coops_Graph),
-    [coop:relay_data(Root_Coop_Node, 5) || _N <- lists:seq(1,Num_Results)],
+    [coop:relay_data(Root_Coop_Node, 5) || _N <- lists:seq(1, Num_Results)],
     timer:sleep(100),
     Results6 = fetch_results(Receiver_Pid),
     6 = length(Results6),
@@ -183,6 +186,28 @@ fanout_round_robin(_Config) ->
     Results2 = Results4 -- [7,7],
     2 = length(Results2),
     Results0 = Results2 -- [8,8],
+    0 = length(Results0).
+    
+fanout_broadcast(_Config) ->
+    Num_Results = 12,
+    Num_Workers = 4,
+    Receiver_Pid = spawn_link(?MODULE, receive_round_robin_results, [Num_Results, []]),
+    {Root_Coop_Node, _Template_Graph, Coops_Graph} = make_fanout_coop(broadcast, Num_Workers, Receiver_Pid),
+    Fanout_Stats = digraph:info(Coops_Graph),
+    acyclic = proplists:get_value(cyclicity, Fanout_Stats),
+    6 = digraph:no_vertices(Coops_Graph),
+    8 = digraph:no_edges(Coops_Graph),
+    [coop:relay_data(Root_Coop_Node, 7) || _N <- lists:seq(1, Num_Results div Num_Workers)],
+    timer:sleep(100),
+    Results12 = fetch_results(Receiver_Pid),
+    12 = length(Results12),
+    Results9 = Results12 -- [8,8,8],
+    9 = length(Results9),
+    Results6 = Results9 -- [9,9,9],
+    6 = length(Results6),
+    Results3 = Results6 -- [10,10,10],
+    3 = length(Results3),
+    Results0 = Results3 -- [11,11,11],
     0 = length(Results0).
     
 rr_init([Inc_Amt]) -> Inc_Amt.
