@@ -57,14 +57,18 @@ Compiling and testing erlangsp
 
 Download and install the source code, then perform the following at the command line:
 
-  1. make realclean all test dialyze rel
-  1. rel/erlangsp/bin/erlangsp console
+```
+  % make realclean all test dialyze rel
+  % rel/erlangsp/bin/erlangsp console
+```
 
 You will now be at a shell prompt with erlangsp, coop and any example projects loaded. Try the following erlang commands to ensure that everything compiled and loaded properly:
 
+```
   1> coop:module_info().
   2> erlangsp:module_info().
   3> esp_cache:module_info().
+```
 
 You must write erlang code that uses the erlangsp library for your application to take advantage of the services provided. The best way to do that is to use rebar and name erlangsp as an included application in your .app.src application file.
 
