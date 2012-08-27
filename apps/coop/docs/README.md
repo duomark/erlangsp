@@ -3,6 +3,31 @@ Co-op Library (Cooperating Processes)
 
 A Co-op is a collection of processes arranged in a Directed Acyclic Graph (using Erlang's digraph module). Nodes of the graph are processes and edges represent messaging from an upstream process to a downstream process. The structure is maintained as a static digraph template when initially specified, a digraph containing live erlang processes at each graph node, and the same erlang processes connected via internal state references to downstream pids such that messages are sent directly to known pids without name lookup in the normal dataflow case.
 
+```
+Here is a simple example of a Pipeline Co-op calculating 3*(x+2)-5:
+
+-module(example).
+-export([plus2/2, times3/2, minus5/2]).
+
+plus2 (Ignored_State, X) -> {Ignored_State, X+2}.
+times3(Ignored_State, X) -> {Ignored_State, X*3}.
+minus5(Ignored_State, X) -> {Ignored_State, X-5}.
+
+%% Pipeline_Fns is equivalent to [ {example, plus2}, {example, times3}, {example, minus5} ]
+%% Corresponding digraph is:  plus2 => times3 => minus5 => Receiver
+
+Coop_Head = coop:new_pipeline(Pipeline_Fns, self()),
+coop:relay_data(Coop_Head, 4),
+receive Any -> Any end.
+```
+
+Setting up the constituent pipeline functions involves filling in records with an init function for the initial State (which is consistently ignored in this example) plus setting the function task to execute. The call to coop:new_pipeline/2 creates a graph and a process for each stage of the pipeline, with each one executing the corresponding exported function. The data relayed in (4 in this case) is passed through the first stage (4+2 => 6) and then to the next stage (6*3 => 18) and finally to the last stage (18-5 => 13) with the result sent as a message to the Receiver which was set to self(), where we can safely fetch it from the erlang message queue. If the calculation were change to be 3*(x-5) + 2 we could just rearrange the order of the functions in the pipeline and make a new instance of the Co-op to perform the new calculation. The focus is on representing the computation as the flow of data from function to function, allowing the VM to execute the functions concurrently on different problem instances simultaneously.
+
+In a pipeline the only choice is to serially pass the data from stage to stage. The current version also allows a fanout rather than a pipeline, in which case the data can be sent to one of the children nodes, or all of the children nodes.
+
+Co-op Structure
+===============
+
 A Co-op is a single computation entity which can only accurately compute if all its constituent process components are present and operating normally. If any process fails, the entire Co-op network fails and is removed from memory in the erlang node. This is accomplished via a Kill_Switch process per Co-op which is connected to all processes used within a single Co-op Body (a second Kill_Switch can be maintained for just the Co-op Head so that the loss of a Body does not eliminate the Co-op Head and all pending messages for the Co-op).
 
 The Co-op Head serves as the publicly visible access point for delivering data to the Co-op (and unfortunately a potetially fatal choke point for certain traffic patterns) but it allows the passing of both control and data to the Co-op via dedicated processes, one for each type of message. Internally, both the data queue and the control queue are delivered to the Root process, which then forwards them to the Co-op Body's Root Co-op Node. Data messages are sent synchronously so that only one at a time may enter the Co-op Body, but control messages are sent asynchronously, so they get delivered more quickly by bypassing all pending data messages. Control messages should be infrequent and data messages should be very nearly 100% of the traffic to a Co-op. It is possible to send "high priority" data messages to a Co-op. Internally, the Data is sent via the control process so it bypasses all pending Data messages. Overuse of this option will flood the Root Pid with many messages, when its Erlang Mailbox should generally have just one Data message and one Control message at any given time. The Control Pid should generally have an empty queue, and the Data Pid may have many messages under load.
