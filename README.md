@@ -8,7 +8,7 @@ The ideas behind Erlang/SP are evolving rapidly and constantly in flux. I welcom
 The basic components of an Erlang/SP solution are:
 
   * digraph: An instance of the erlang:digraph module to describe a co-op structure
-  * co-op: A task-specific (pipeline, round-robin) collection of cooperating processes
+  * co-op: A task-specific (pipeline, round-robin, broadcast) collection of cooperating processes
 
 All components offer both Control and Data channels for more efficient management of services. Supervisor behaviour will not resemble the current incarnation of OTP, and allocation of processes will be more of a batch/bulk-oriented operation (probably eventually requiring VM tweaks to enhance process spawning speed). Some tests of parallel spawning will be done soon.
 
@@ -62,8 +62,15 @@ Download and install the source code, then perform the following at the command 
 
 You will now be at a shell prompt with erlangsp, coop and any example projects loaded. Try the following erlang commands to ensure that everything compiled and loaded properly:
 
-  1. > coop:module_info().
-  1. > erlangsp:module_info().
-  1. > esp_cache:module_info().
+  1> coop:module_info().
+  2> erlangsp:module_info().
+  3> esp_cache:module_info().
 
 You must write erlang code that uses the erlangsp library for your application to take advantage of the services provided. The best way to do that is to use rebar and name erlangsp as an included application in your .app.src application file.
+
+Documentation
+=============
+
+The current documentation is rudimentary because the underlying software is changing quickly. There should be enough information to try out the libraries and examples, but it is not formatted in a nice way. There is a separate 'docs' directory in each of the apps or examples directories written in markdown so that it can be easily browsed from github with a browser:
+
+  1. [Co-op docs](erlangsp/tree/master/apps/coop/docs/README.md)
