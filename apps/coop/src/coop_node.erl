@@ -53,10 +53,10 @@
 -spec new(pid(), coop_task_fn(), coop_init_fn()) -> coop_node().
 -spec new(pid(), coop_task_fn(), coop_init_fn(), data_flow_method()) -> coop_node().
 
-%% Round robin is default for downstream data distribution.
+%% Broadcast is default for downstream data distribution.
 %% Optimized for special case of 1 downstream pid.
 new(Kill_Switch, Node_Fn, Init_Fn) ->
-    new(Kill_Switch, Node_Fn, Init_Fn, round_robin).
+    new(Kill_Switch, Node_Fn, Init_Fn, broadcast).
 
 %% Override downstream data distribution.
 new(Kill_Switch, {_Task_Mod, _Task_Fn} = Node_Fn, {_Mod, _Fun, _Args} = Init_Fn, Data_Flow_Method)

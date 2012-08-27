@@ -88,7 +88,7 @@ pipeline(Kill_Switch, Pipeline_Template_Graph, Left_To_Right_Stages, Receiver) -
 
 spawn_pipeline_stage(Kill_Switch, Coops, {Name, #coop_node_fn{init=Init_Fn, task=Task_Fn}},
                      {Receiver, Downstream_Vertex_Name}) ->
-    Coop_Node = coop_node:new(Kill_Switch, Task_Fn, Init_Fn),         % Defaults to round_robin out
+    Coop_Node = coop_node:new(Kill_Switch, Task_Fn, Init_Fn),         % Defaults to broadcast out
     coop_node:node_task_add_downstream_pids(Coop_Node, [Receiver]),   % And just 1 receiver
     digraph:add_vertex(Coops, Name, Coop_Node),
     digraph:add_edge(Coops, Name, Downstream_Vertex_Name),
@@ -122,7 +122,7 @@ fanout(Kill_Switch, Fanout_Template_Graph) ->
 add_fanout_worker_node(Kill_Switch, Has_Fan_In, Receiver, Template_Graph, Vertex_Name, Coops_Graph) ->
     {Vertex_Name, #coop_node_fn{init=Init_Fn, task=Task_Fn}}
         = digraph:vertex(Template_Graph, Vertex_Name),
-    Coop_Node = coop_node:new(Kill_Switch, Task_Fn, Init_Fn),  % Default to round-robin
+    Coop_Node = coop_node:new(Kill_Switch, Task_Fn, Init_Fn),  % Defaults to broadcast
     digraph:add_vertex(Coops_Graph, Vertex_Name, Coop_Node),
     digraph:add_edge(Coops_Graph, inbound, Vertex_Name),
     Has_Fan_In andalso begin

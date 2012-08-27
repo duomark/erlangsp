@@ -155,7 +155,7 @@ task_compute_one(_Config) ->
     15 = receive Data -> Data end.
 
 task_compute_three_round_robin(_Config) ->
-    Coop_Node = {coop_node, _Node_Ctl_Pid, Node_Task_Pid} = setup_no_downstream(),
+    Coop_Node = {coop_node, _Node_Ctl_Pid, Node_Task_Pid} = setup_no_downstream(round_robin),
     Receivers = [A,B,C] = [proc_lib:spawn_link(?MODULE, report_result, [[]])
                            || _N <- lists:seq(1,3)],
     ?TM:node_task_add_downstream_pids(Coop_Node, [A]),
@@ -328,7 +328,7 @@ sys_log(_Config) ->
     %% ok = ?TM:node_ctl_log_to_file(Coop_Node, false, self()).
 
 sys_install(_Config) ->
-    Coop_Node = {coop_node, _Node_Ctl_Pid, Node_Task_Pid} = setup_no_downstream(),
+    Coop_Node = {coop_node, _Node_Ctl_Pid, Node_Task_Pid} = setup_no_downstream(round_robin),
     Pid = spawn_link(fun() ->
                              %% Trace results...
                              receive {15, 30} -> ok;
