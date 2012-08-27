@@ -20,11 +20,16 @@
          node_ctl_clone/1, node_ctl_stop/1,
          node_ctl_suspend/1, node_ctl_resume/1, node_ctl_trace/1, node_ctl_untrace/1,
          node_ctl_stats/3, node_ctl_log/3, node_ctl_log_to_file/3,
-         node_ctl_install_trace_fn/3, node_ctl_remove_trace_fn/3,
+         node_ctl_install_trace_fn/3, node_ctl_remove_trace_fn/3
+        ]).
 
-         %% Send commands to coop_node data task process...
-         node_task_get_downstream_pids/1, node_task_add_downstream_pids/2,
-         node_task_deliver_data/2
+%% Internal functions that are exported (not part of the external API)
+-export([
+         %% Send data to a node...
+         node_task_deliver_data/2,
+
+         %% Inspect and add to downstream receivers.
+         node_task_get_downstream_pids/1, node_task_add_downstream_pids/2
         ]).
 
 %% Internal functions for spawned processes
