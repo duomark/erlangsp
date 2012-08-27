@@ -14,7 +14,7 @@ compile:
 	@${REBAR} compile
 
 dialyze: all
-	@dialyzer -Wrace_conditions apps/*/ebin
+	@dialyzer -Wrace_conditions apps/*/ebin apps/*/examples/*/ebin
 
 gc: crash
 	@echo 'Removing all emacs backup files'
@@ -55,4 +55,4 @@ test: all
 	make ct
 
 ct: all
-	@(cd apps/ctest; ct_run -spec coop.spec -pa ../coop/ebin -pa ../../deps/*/ebin)
+	@(cd apps/ctest; ct_run -spec coop.spec -pa ../coop/ebin -pa ../examples/*/ebin -pa ../../deps/*/ebin)

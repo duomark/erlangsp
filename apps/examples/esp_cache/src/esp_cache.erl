@@ -65,6 +65,15 @@
 -define(VALUE, '$$_value').
 -define(MFA,   '$$_mfa').
 
+%% create(Num_MFA_Workers) ->
+%%     Fanout_Dag = coop:fanout(Num_MFA_Workers, none, ),
+    
+%%     Kill_Switch = coop_kill_link_rcv:make_kill_switch(),
+
+%% Coop:
+%%   Dir => 10 workers => | dead_end
+%%   Dynamic => Datum workers    
+
 %%========================= Directory Node =================================
 
 -type coop_proc() :: pid() | coop_head() | coop_node().
@@ -165,11 +174,12 @@ make_new_datum({Coop_Head, Kill_Switch} = State, {add, {Key, {?MFA, {Mod, Fun, A
 
 %%========================= Datum Node ====================================
 
-new_datum_node(Kill_Switch, V) -> coop_node:new(Kill_Switch, {?MODULE, manage_datum}, {?MODULE, init_datum, V}).
+%% New Datum processes are dynamically created Coop Nodes.
+new_datum_node(Kill_Switch, V) ->
+    coop_node:new(Kill_Switch, {?MODULE, manage_datum}, {?MODULE, init_datum, V}).
 
 %% Initialize the Coop_Node with the value to cache.
 init_datum(V) -> V.
-
 
 %% Cached datum is relayed to requester, no downstream listeners.
 manage_datum(_Datum, {expire,               {_Ref,   _Rqstr}} ) -> exit(normal);

@@ -1,2 +1,7 @@
 {export, "./coop/logs/cover"}.
-{incl_mods, [coop, coop_head, coop_node, coop_node_data_rcv, coop_node_util]}.
+{incl_mods, [coop, coop_flow, coop_head, coop_node,
+             coop_head_ctl_rcv, coop_head_data_rcv, coop_head_root_rcv,
+             coop_node_ctl_rcv, coop_node_data_rcv,
+             coop_kill_link_rcv, coop_node_util,
+             esp_cache
+            ]}.
