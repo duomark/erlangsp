@@ -38,12 +38,7 @@
 %% Graph API
 -export([
          %% Create coop_head instances...
-         new/2, get_kill_switch/1, get_root_pid/1,
-
-         %% Send commands to coop_head data task process...
-         send_ctl_msg/2, send_ctl_change_timeout/2,
-         send_data_msg/2, send_priority_data_msg/2,
-         send_data_change_timeout/2,
+         new/2, get_kill_switch/1, 
 
          %% Send commands to coop_head control process...
          %% ctl_clone/1,
@@ -52,6 +47,16 @@
          ctl_stats/3, ctl_log/3, ctl_log_to_file/3
          %% ctl_install_trace_fn/3, ctl_remove_trace_fn/3,
         ]).
+
+%% Internal functions that are exported (not part of the external API)
+-export([
+         get_root_pid/1,
+
+         %% Send commands to coop_head data task process...
+         send_ctl_msg/2, send_ctl_change_timeout/2,
+         send_data_msg/2, send_priority_data_msg/2,
+         send_data_change_timeout/2
+ ]).
 
 %% Internal functions for spawned processes
 -export([echo_loop/1]).
