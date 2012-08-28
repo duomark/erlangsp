@@ -19,9 +19,9 @@
 -type coop_init_fn() :: {module(), atom(), any()}.
 
 -record(coop_node_fn, {
-          init              :: coop_init_fn(),
-          task              :: coop_task_fn(),
-          flow = broadcastn :: data_flow_method()
+          init             :: coop_init_fn(),
+          task             :: coop_task_fn(),
+          flow = broadcast :: data_flow_method()
          }).
 
 -record(coop_dag_node, {
