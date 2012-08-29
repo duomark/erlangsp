@@ -7,7 +7,7 @@ A Co-op is a collection of processes arranged in a Directed Acyclic Graph (using
 Here is a simple example of a Pipeline Co-op calculating 3*(x+2) - Number_of_Data_Items_Seen:
 
 -module(example).
--export([plus2/2, times3/2, minus5/2]).
+-export([plus2/2, times3/2, minus_seen/2]).
 
 plus2 (Ignored_State, X) -> {Ignored_State, X+2}.
 times3(Ignored_State, X) -> {Ignored_State, X*3}.
