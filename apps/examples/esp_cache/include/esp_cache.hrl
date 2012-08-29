@@ -1,0 +1,2 @@
+-define(VALUE, '$$_value').
+-define(MFA,   '$$_mfa').

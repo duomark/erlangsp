@@ -3,7 +3,7 @@
 %%% @author Jay Nelson <jay@duomark.com>
 %%% @doc
 %%%    A cache implemented using a process dictionary to manage an index
-%%%    of data where each datum is a separate process.
+%%%    of data where each datum is a separate erlang process.
 %%% @since v0.0.1
 %%% @end
 %%%------------------------------------------------------------------------------
@@ -12,12 +12,18 @@
 -include_lib("erlangsp/include/license_and_copyright.hrl").
 -author(jayn).
 
-%% Friendly API
+%% Public API
+-export([new_cache_coop/1]).
+
+%% Node functions
 -export([
-         new_directory_node/1, init_directory/1, value_request/2,  % Directory Coop_Node
-         new_worker_node/1, init_mfa_worker/1, make_new_datum/2,   % MFA Worker Coop_Node
-         new_datum_node/2, init_datum/1, manage_datum/2            % Cached Datum Coop_Node
-        ]).
+         init_directory/1,  value_request/2,    % Directory Coop_Node
+         init_mfa_worker/1, make_new_datum/2,   % MFA Worker Coop_Node
+         init_datum/1,      manage_datum/2      % Cached Datum Coop_Node
+         ]).
+
+%% Testing API
+-export([new_directory_node/1, new_worker_node/1, new_datum_node/2]).
 
 
 %%------------------------------------------------------------------------------
@@ -28,14 +34,17 @@
 %% of data keys which each reference a cached datum. Each datum
 %% is held in a separate, dynamic Coop_Node instance. A round-
 %% robin pool of workers is used to compute values that are not
-%% passed directly to a Coop_Node datum instance.
+%% passed directly to a Coop_Node datum instance, to achieve
+%% limited but load-balanced concurrency.
 %%
 %% Two entries exist per Key:
 %%    Key lookup:    Key => Coop_Node
 %%    Expired Index: {Key, Coop_Node} => Node_Task_Pid
 %%
-%% This module includes three comparative implementations:
+%% This module includes one comparative implementations:
 %%   1) Process dictionary for Keys
+%%
+%% [Two others are not yet implemented]:
 %%   2) Public shared concurrent read ETS table for Keys
 %%        - One Coop_Node writing to it
 %%   3) Concurrent Coop_Node skiplist for Keys
@@ -61,18 +70,24 @@
 %%
 %%------------------------------------------------------------------------------
 -include_lib("coop/include/coop_dag.hrl").
+-include("esp_cache.hrl").
 
--define(VALUE, '$$_value').
--define(MFA,   '$$_mfa').
-
-%% create(Num_MFA_Workers) ->
-%%     Fanout_Dag = coop:fanout(Num_MFA_Workers, none, ),
-    
-%%     Kill_Switch = coop_kill_link_rcv:make_kill_switch(),
 
 %% Coop:
-%%   Dir => 10 workers => | dead_end
-%%   Dynamic => Datum workers    
+%%   Dir => X workers => | no receiver
+%%   Dynamic => Datum workers
+
+new_cache_coop(Num_Workers) ->
+
+    %% Make the cache directory and worker function specifications...
+    Cache_Directory = coop:make_dag_node(cache, directory_init_fn(), directory_task_fn(), round_robin),
+    Workers = [coop:make_dag_node(list_to_atom("worker-" ++ N), worker_init_fn(), worker_task_fn())
+               || N <- lists:seq(1, Num_Workers)],
+
+    %% One cache directory fans out to Num_Workers with no final fan in.
+    %% New datum nodes are created dynamically by the workers.
+    coop:new_fanout(Cache_Directory, Workers, none).
+
 
 %%========================= Directory Node =================================
 
@@ -93,7 +108,11 @@
 
 %% Create a new directory Coop_Node.
 new_directory_node(Kill_Switch) ->
-    coop_node:new(Kill_Switch, {?MODULE, value_request}, {?MODULE, init_directory, {}}).
+    coop_node:new(Kill_Switch, directory_task_fn(), directory_init_fn()).
+
+%% Helper functions for setting up a Coop.
+directory_init_fn() -> {?MODULE, init_directory, {}}.
+directory_task_fn() -> {?MODULE, value_request}.
 
 %% No state needed.
 init_directory(State) -> State.
@@ -148,10 +167,14 @@ return_value(State, {_Any_Type,     {_Key, {_Ref, _Rqstr} = Requester}}, Coop_No
 %% Create a new worker Coop_Node.
 new_worker_node(Coop_Head) ->
     Kill_Switch = coop:get_kill_switch(Coop_Head),
-    coop_node:new(Kill_Switch, {?MODULE, make_new_datum}, {?MODULE, init_mfa_worker, {Coop_Head, Kill_Switch}}).
+    coop_node:new(Kill_Switch, worker_task_fn(), {?MODULE, init_mfa_worker, {Coop_Head, Kill_Switch}}).
 
-%% No state needed.
-init_mfa_worker({_Coop_Head, _Kill_Switch} = State) -> State.
+%% Helper functions for setting up a Coop.
+worker_init_fn() -> {?MODULE, init_mfa_worker, {}}.
+worker_task_fn() -> {?MODULE, make_new_datum}.
+
+%% State is used for relaying new entries back to the Cache Directory.
+init_mfa_worker({{coop_head, _Node_Ctl_Pid, _Node_Task_Pid}, _Kill_Switch} = State) -> State.
 
 
 %% Compute the replacement value and forward to the existing Coop_Node...

@@ -14,6 +14,7 @@
 %% Treat Coops like Pids
 -export([
          new_pipeline/2, new_fanout/3,
+         make_dag_node/3, make_dag_node/4,
          get_kill_switch/1, relay_data/2, relay_high_priority_data/2
         ]).
 
@@ -41,6 +42,16 @@ new_fanout(#coop_dag_node{} = Router_Fn, [#coop_dag_node{}] = Workers, Receiver)
     {Coop_Root_Node, _Fanout_Graph, _Coops_Graph} = fanout(Body_Kill_Switch, Router_Fn, Workers, Receiver),
     Head_Kill_Switch = coop_kill_link_rcv:make_kill_switch(),
     coop_head:new(Head_Kill_Switch, Coop_Root_Node).
+
+
+%% Make a node function record.
+make_dag_node(Name, Init_Fn, Task_Fn) ->
+    make_dag_node(Name, Init_Fn, Task_Fn, broadcast).
+
+make_dag_node(Name, {_Imod, _Ifun, _Iargs} = Init_Fn, {_Mod, _Fun} = Task_Fn, Data_Flow)
+  when is_atom(_Imod), is_atom(_Ifun), is_atom(_Mod), is_atom(_Fun) ->
+    #coop_dag_node{name=Name, label=#coop_node_fn{init=Init_Fn, task=Task_Fn, flow=Data_Flow}}.
+
     
 %% The Coop_Head has reference to the Kill_Switch process.
 get_kill_switch(Coop_Head) ->
