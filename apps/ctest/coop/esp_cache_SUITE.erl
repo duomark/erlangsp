@@ -9,12 +9,12 @@
 -export([all/0, init_per_suite/1, end_per_suite/1]).
 
 %% Test Coop Node functionality individually
--export([datum_value/1, worker_value/1]).
+-export([datum_value/1, worker_value/1, worker_mfa/1]).
 
 %% Spawned functions must be exported
--export([check_worker/2]).
+-export([check_worker/2, compute_value/1]).
 
-all() -> [datum_value, worker_value].
+all() -> [datum_value, worker_value, worker_mfa].
 
 init_per_suite(Config) -> Config.
 end_per_suite(_Config) -> ok.
@@ -56,7 +56,7 @@ check_datum(Ref) ->
     after 1000 -> timeout
     end.
 
-worker_value(_Config) ->
+worker_test_age(Value_Expr, Answer) ->
 
     %% Create a worker node...
     Self = self(),
@@ -70,7 +70,7 @@ worker_value(_Config) ->
     %% Create a new cached datum node from a simple value...
     R1 = make_ref(),
     Rcvr = proc_lib:spawn_link(?MODULE, check_worker, [R1, []]),
-    coop:relay_data(Coop_Node, {add, {age, {?VALUE, 15}, {R1, Rcvr}}}),
+    coop:relay_data(Coop_Node, {add, {age, Value_Expr, {R1, Rcvr}}}),
     Results = check_worker([]),
     2 = length(Results),
     [?CTL_MSG({link, _Pids2})] = [I || I <- Results, element(1,element(3, I)) =:= link],
@@ -78,7 +78,7 @@ worker_value(_Config) ->
         = [I || I <- Results, element(1, element(3, I)) =:= new],
     true = is_process_alive(Rcvr),
     Rcvr ! {results, Self},
-    [15] = receive B -> B after 1000 -> no_value end,
+    [Answer] = receive B -> B after 1000 -> no_value end,
     meck:unload(coop).
 
 check_worker(Acc) ->
@@ -91,5 +91,9 @@ check_worker(Ref, Acc) ->
         {results, From} -> From ! lists:reverse(Acc)
     after 5000 -> no_msg
     end.
-                               
-             
+
+worker_value(_Config) -> worker_test_age({?VALUE, 15}, 15).
+worker_mfa(_Config)   -> worker_test_age({?MFA, {?MODULE, compute_value, 7}}, 21).
+
+compute_value(X) -> 3*X.
+    

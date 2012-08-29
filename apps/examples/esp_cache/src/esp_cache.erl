@@ -173,17 +173,19 @@ init_mfa_worker({{coop_head, _Node_Ctl_Pid, _Node_Task_Pid}, _Kill_Switch} = Sta
 
 %% Compute the replacement value and forward to the existing Coop_Node...
 make_new_datum(State, {replace, {_Key, {?MFA, {Mod, Fun, Args}}, {_Ref, _Rqstr} = Requester}, Coop_Node}) ->
+    %% Directory already knows about this datum, using worker for potentially long running M:F(A)
     coop:relay_data(Coop_Node, {replace, Mod:Fun(Args), Requester}),
     {State, noop};
 
 %% Create a new Coop_Node initialized with the value to cache, notifying the Coop_Head directory.
 make_new_datum({Coop_Head, Kill_Switch} = State, {add, {Key, {?VALUE, V},  {_Ref, _Rqstr} = Requester}}) ->
     New_Coop_Node = new_datum_node(Kill_Switch, V),
-    coop:relay_high_priority_data(Coop_Head, {new, Key, New_Coop_Node}),
-    coop:relay_data(New_Coop_Node, {get_value, Requester}),
-    {State, noop};
+    relay_new_datum(Coop_Head, Key, New_Coop_Node, Requester, State);
 make_new_datum({Coop_Head, Kill_Switch} = State, {add, {Key, {?MFA, {Mod, Fun, Args}}, {_Ref, _Rqstr} = Requester}}) ->
     New_Coop_Node = new_datum_node(Kill_Switch, Mod:Fun(Args)),
+    relay_new_datum(Coop_Head, Key, New_Coop_Node, Requester, State).
+
+relay_new_datum(Coop_Head, Key, New_Coop_Node, Requester, State) ->
     coop:relay_high_priority_data(Coop_Head, {new, Key, New_Coop_Node}),
     coop:relay_data(New_Coop_Node, {get_value, Requester}),
     {State, noop}.
