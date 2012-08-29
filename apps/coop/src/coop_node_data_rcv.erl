@@ -70,7 +70,7 @@ node_data_loop(Node_Fn, Node_State, Downstream_Pids, Data_Flow_Method, Debug_Opt
 relay_data(Debug_Opts, {Module, Function} = _Node_Fn, Node_State, _Any_Type, Data, Worker_Set)
   when Worker_Set =:= {}; Worker_Set =:= {[],[]} ->
     {New_Node_State, _Fn_Result} = Module:Function(Node_State, Data), %% For side effects only.
-    {Debug_Opts, {}, New_Node_State};
+    {Debug_Opts, Worker_Set, New_Node_State};
 %% Faster routing if only one Downstream_Pid...
 relay_data(Debug_Opts, Node_Fn, Node_State, Any_Data_Flow_Method, Data, {Pid} = Worker_Set) ->
     notify_debug_and_return(Debug_Opts, Node_Fn, Node_State, Any_Data_Flow_Method, Data, Worker_Set, Pid);
@@ -81,7 +81,7 @@ relay_data(Debug_Opts, {Module, Function} = _Node_Fn, Node_State, broadcast, Dat
                                    coop:relay_data(To, Fn_Result),
                                    sys:handle_debug(Opts, fun debug_coop/3,
                                                     {broadcast, New_Node_State}, {out, Fn_Result, To})
-                           end, Debug_Opts, queue:to_list(Worker_Set)),
+                           end, Debug_Opts, queue:to_list(Worker_Set)),  %% TODO: this is expensive?!
     {New_Opts, Worker_Set, New_Node_State};
 %% Relay data with random or round_robin has to choose a single destination.
 relay_data(Debug_Opts, Node_Fn, Node_State, Single_Data_Flow_Method, Data, Worker_Set) ->

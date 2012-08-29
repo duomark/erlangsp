@@ -80,8 +80,10 @@
 new_cache_coop(Num_Workers) ->
 
     %% Make the cache directory and worker function specifications...
-    Cache_Directory = coop:make_dag_node(cache, directory_init_fn(), directory_task_fn(), round_robin),
-    Workers = [coop:make_dag_node(list_to_atom("worker-" ++ N), worker_init_fn(), worker_task_fn())
+    Cache_Directory = coop:make_dag_node(cache, ?COOP_INIT_FN(init_directory, []),
+                                         ?COOP_TASK_FN(value_request), round_robin),
+    Workers = [coop:make_dag_node(list_to_atom("worker-" ++ N), ?COOP_INIT_FN(init_mfa_worker, []),
+                                  ?COOP_TASK_FN(make_new_datum))
                || N <- lists:seq(1, Num_Workers)],
 
     %% One cache directory fans out to Num_Workers with no final fan in.
@@ -108,11 +110,7 @@ new_cache_coop(Num_Workers) ->
 
 %% Create a new directory Coop_Node.
 new_directory_node(Kill_Switch) ->
-    coop_node:new(Kill_Switch, directory_task_fn(), directory_init_fn()).
-
-%% Helper functions for setting up a Coop.
-directory_init_fn() -> {?MODULE, init_directory, {}}.
-directory_task_fn() -> {?MODULE, value_request}.
+    coop_node:new(Kill_Switch, ?COOP_TASK_FN(value_request), ?COOP_INIT_FN(init_directory, [])).
 
 %% No state needed.
 init_directory(State) -> State.
@@ -167,11 +165,7 @@ return_value(State, {_Any_Type,     {_Key, {_Ref, _Rqstr} = Requester}}, Coop_No
 %% Create a new worker Coop_Node.
 new_worker_node(Coop_Head) ->
     Kill_Switch = coop:get_kill_switch(Coop_Head),
-    coop_node:new(Kill_Switch, worker_task_fn(), {?MODULE, init_mfa_worker, {Coop_Head, Kill_Switch}}).
-
-%% Helper functions for setting up a Coop.
-worker_init_fn() -> {?MODULE, init_mfa_worker, {}}.
-worker_task_fn() -> {?MODULE, make_new_datum}.
+    coop_node:new(Kill_Switch, ?COOP_TASK_FN(make_new_datum), ?COOP_INIT_FN(init_mfa_worker, {Coop_Head, Kill_Switch})).
 
 %% State is used for relaying new entries back to the Cache Directory.
 init_mfa_worker({{coop_head, _Node_Ctl_Pid, _Node_Task_Pid}, _Kill_Switch} = State) -> State.
@@ -199,8 +193,9 @@ make_new_datum({Coop_Head, Kill_Switch} = State, {add, {Key, {?MFA, {Mod, Fun, A
 
 %% New Datum processes are dynamically created Coop Nodes.
 new_datum_node(Kill_Switch, V) ->
-    coop_node:new(Kill_Switch, {?MODULE, manage_datum}, {?MODULE, init_datum, V}).
-
+    coop_node:new(Kill_Switch, ?COOP_TASK_FN(manage_datum), ?COOP_INIT_FN(init_datum, V)).
+    
+    
 %% Initialize the Coop_Node with the value to cache.
 init_datum(V) -> V.
 

@@ -9,9 +9,12 @@
 -export([all/0, init_per_suite/1, end_per_suite/1]).
 
 %% Test Coop Node functionality individually
--export([datum_value/1, worker/1]).
+-export([datum_value/1, worker_value/1]).
 
-all() -> [datum_value, worker].
+%% Spawned functions must be exported
+-export([check_worker/2]).
+
+all() -> [datum_value, worker_value].
 
 init_per_suite(Config) -> Config.
 end_per_suite(_Config) -> ok.
@@ -53,23 +56,40 @@ check_datum(Ref) ->
     after 1000 -> timeout
     end.
 
-worker(_Config) ->
+worker_value(_Config) ->
 
     %% Create a worker node...
     Self = self(),
     meck:new(coop, [passthrough]),
     meck:expect(coop, get_kill_switch, fun(_Coop_Head) -> Self end),
-    _Kill_Switch = coop_kill_link_rcv:make_kill_switch(),
     Fake_Coop_Head = {coop_head, Self, Self},
     {coop_node, _Node_Ctl_Pid, _Node_Task_Pid} = Coop_Node
         = esp_cache:new_worker_node(Fake_Coop_Head),
+    ?CTL_MSG({link, _Pids1}) = receive A -> A after 1000 -> timeout end,
 
-    %% Send it a value...
+    %% Create a new cached datum node from a simple value...
     R1 = make_ref(),
-    coop:relay_data(Coop_Node, {add, {age, {?VALUE, 15}}, {R1, Self}}),
-    check_worker(R1),
-
+    Rcvr = proc_lib:spawn_link(?MODULE, check_worker, [R1, []]),
+    coop:relay_data(Coop_Node, {add, {age, {?VALUE, 15}, {R1, Rcvr}}}),
+    Results = check_worker([]),
+    2 = length(Results),
+    [?CTL_MSG({link, _Pids2})] = [I || I <- Results, element(1,element(3, I)) =:= link],
+    [?DATA_MSG({new, age, {coop_node, _, _}})]
+        = [I || I <- Results, element(1, element(3, I)) =:= new],
+    true = is_process_alive(Rcvr),
+    Rcvr ! {results, Self},
+    [15] = receive B -> B after 1000 -> no_value end,
     meck:unload(coop).
 
-check_worker(_Ref) ->
-    ok.
+check_worker(Acc) ->
+    receive Any -> check_worker([Any | Acc])
+    after 1000  -> lists:reverse(Acc)
+    end.
+check_worker(Ref, Acc) ->
+    receive
+        {Ref, Value} -> check_worker(Ref, [Value | Acc]);
+        {results, From} -> From ! lists:reverse(Acc)
+    after 5000 -> no_msg
+    end.
+                               
+             

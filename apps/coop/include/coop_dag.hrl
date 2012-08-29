@@ -42,6 +42,12 @@
 -define(CTL_TOKEN,  '$$_CTL').
 -define(ROOT_TOKEN, '$$_ROOT').
 
+-define(CTL_MSG(__Msg),  {?DAG_TOKEN, ?CTL_TOKEN,  __Msg}).
+-define(DATA_MSG(__Msg), {?DAG_TOKEN, ?DATA_TOKEN, __Msg}).
+
+-define(COOP_INIT_FN(__Fun, __Args), {?MODULE, __Fun, __Args}).
+-define(COOP_TASK_FN(__Fun), {?MODULE, __Fun}).
+
 %% TODO: Convert these to a function call instead of a macro.
 -define(SEND_CTL_MSG(__Coop_Node, __Ctl_Msg),
         {coop_node, __Ctl_Pid, __Task_Pid} = __Coop_Node,
