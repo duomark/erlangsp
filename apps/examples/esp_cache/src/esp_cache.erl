@@ -15,15 +15,15 @@
 %% Public API
 -export([new_cache_coop/1]).
 
-%% Node functions
+%% Testing API
+-export([new_directory_node/1, new_worker_node/1, new_datum_node/2]).
+
+%% Node setup functions
 -export([
          init_directory/1,  value_request/2,    % Directory Coop_Node
          init_mfa_worker/1, make_new_datum/2,   % MFA Worker Coop_Node
          init_datum/1,      manage_datum/2      % Cached Datum Coop_Node
          ]).
-
-%% Testing API
--export([new_directory_node/1, new_worker_node/1, new_datum_node/2]).
 
 
 %%------------------------------------------------------------------------------
@@ -104,13 +104,16 @@ new_cache_coop(Num_Workers) ->
 -type fep_request() :: {any(), value_request(), receiver()}.
 -type fetch_cmd() :: lookup | find_else_put.
 
+%% -type stats_cmd() :: num_keys.
+
 -spec value_request({}, {change_cmd(), change_request()}) -> no_return().
 -spec change_value ({}, {change_cmd(), change_request()}, coop_proc() | undefined) -> {{}, noop} | {{}, {add, change_request()}}.
 -spec return_value ({}, {fetch_cmd(), lookup_request() | fep_request()}, coop_proc() | undefined) -> {{}, noop}.
 
 %% Create a new directory Coop_Node.
-new_directory_node(Kill_Switch) ->
-    coop_node:new(Kill_Switch, ?COOP_TASK_FN(value_request), ?COOP_INIT_FN(init_directory, [])).
+new_directory_node(Coop_Head) ->
+    Kill_Switch = coop:get_kill_switch(Coop_Head),
+    coop_node:new(Kill_Switch, ?COOP_TASK_FN(value_request), ?COOP_INIT_FN(init_directory, {})).
 
 %% No state needed.
 init_directory(State) -> State.
@@ -125,6 +128,12 @@ value_request(State, {replace, {Key, _Chg_Type, _Rcvr} } = Req) -> change_value(
 value_request(State, {lookup,        {Key, _Rcvr}        } = Req) -> return_value(State, Req, get(Key));
 value_request(State, {find_else_put, {Key, _Type, _Rcvr} } = Req) -> return_value(State, Req, get(Key));
 
+%% Return the number of active keys...
+value_request(State, {num_keys, {Ref, Rcvr}}) ->
+    %% 2 entries for each key and proc_lib added '$ancestors' and '$initial_call'
+    coop:relay_data(Rcvr, {Ref, (length(get()) - 2) div 2}),
+    {State, noop};
+
 %% Expiration of process removes all references to it in process dictionary.
 %%  Key => Coop_Node  +  {Key, Coop_Node} => Node_Data_Pid (the monitored Pid that went down)
 value_request(State, {'DOWN', _Ref, process, Pid, _Reason}) ->
@@ -132,7 +141,7 @@ value_request(State, {'DOWN', _Ref, process, Pid, _Reason}) ->
     {State, noop};
 
 %% New dynamically created Coop_Nodes are monitored and placed in the process dictionary.
-value_request(State, {new, Key, {coop_node, _Node_Ctl_Pid, Node_Task_Pid}} = Coop_Node) ->
+value_request(State, {new, Key, {coop_node, _Node_Ctl_Pid, Node_Task_Pid} = Coop_Node}) ->
     erlang:monitor(process, Node_Task_Pid),
     put({Key, Coop_Node}, Node_Task_Pid),
     put(Key, Coop_Node),
@@ -140,8 +149,14 @@ value_request(State, {new, Key, {coop_node, _Node_Ctl_Pid, Node_Task_Pid}} = Coo
 
 
 %% Terminate the Coop_Node containing the cached value if there is one...
-change_value(State, {remove,  {_Key, {Ref, Requester}          }}, undefined) -> coop:relay_data(Requester, {Ref, undefined}),    {State, noop};
-change_value(State, {remove,  {_Key, {_Ref, _Rqstr} = Requester}}, Coop_Node) -> coop:relay_data(Coop_Node, {expire, Requester}), {State, noop};
+change_value(State, {remove, {_Key, {Ref, Requester}}}, undefined) ->
+    coop:relay_data(Requester, {Ref, undefined}),
+    {State, noop};
+change_value(State, {remove, {Key, {_Ref, _Rqstr} = Requester}}, Coop_Node) ->
+    erase(Key),
+    erase({Key, Coop_Node}),
+    coop:relay_data(Coop_Node, {expire, Requester}),
+    {State, noop};
 
 %% Update the Coop_Node containing the cached value...
 change_value(State, {replace, {_Key, _Chg_Type,    {_Ref, _Rqstr}}  = New_Value }, undefined) -> value_request(State, {add, New_Value});
@@ -202,6 +217,6 @@ new_datum_node(Kill_Switch, V) ->
 init_datum(V) -> V.
 
 %% Cached datum is relayed to requester, no downstream listeners.
-manage_datum(_Datum, {expire,               {_Ref,   _Rqstr}} ) -> exit(normal);
+manage_datum( Datum, {expire,               {Ref, Requester}} ) -> coop:relay_data(Requester, {Ref, Datum}), exit(normal);
 manage_datum( Datum, {get_value,            {Ref, Requester}} ) -> coop:relay_data(Requester, {Ref, Datum}), {Datum, noop};
 manage_datum(_Datum, {replace,   New_Value, {Ref, Requester}} ) -> coop:relay_data(Requester, {Ref, New_Value}), {New_Value, noop}.
