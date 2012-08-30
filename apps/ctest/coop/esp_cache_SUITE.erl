@@ -11,7 +11,7 @@
 %% Test Coop Node functionality individually
 -export([datum_value/1,
          worker_value/1, worker_mfa/1, worker_replace/1,
-         value_request_lookup/1
+         value_request_lookup/1, value_request_add_replace/1
         ]).
 
 %% Spawned functions must be exported
@@ -20,7 +20,7 @@
 all() -> [
           datum_value,
           worker_value, worker_mfa, worker_replace,
-          value_request_lookup
+          value_request_lookup, value_request_add_replace
          ].
 
 init_per_suite(Config) -> Config.
@@ -143,7 +143,9 @@ worker_replace(_Config) ->
 %%----------------------------------------------------------------------
 %% First stage Directory Coop Node tests
 %%----------------------------------------------------------------------
-value_request_start(Key, Exp_Value) ->
+value_request_lookup(_Config) ->
+    Key = foo,
+    Exp_Value = 29,
 
     %% Create a directory node...
     Self = self(),
@@ -152,8 +154,35 @@ value_request_start(Key, Exp_Value) ->
     Fake_Coop_Head = {coop_head, Self, Self},
     Directory_Node = esp_cache:new_directory_node(Fake_Coop_Head),
     ?CTL_MSG({link, _Pids1}) = receive A -> A after 1000 -> timeout end,
+    check_directory_empty(Directory_Node, Key),
 
-    %% Check that value is missing...
+    %% Create a datum Coop_Node...
+    Value_Node = insert_value(Directory_Node, Key, Exp_Value),
+
+    %% Delete the value and check the count.
+    R1 = make_ref(),
+    coop:relay_data(Directory_Node, {remove, {Key, {R1, Self}}}),
+    timer:sleep(50),
+    R2 = make_ref(),
+    coop:relay_data(Directory_Node, {num_keys, {R2, Self}}),
+    timer:sleep(50),
+    [{R1, Exp_Value}, {R2, 0}] = check_worker([]),
+    false = coop:is_live(Value_Node),
+
+    %% Delete again to make sure it doesn't fail...
+    R3 = make_ref(),
+    coop:relay_data(Directory_Node, {remove, {Key, {R3, Self}}}),
+    R4 = make_ref(),
+    coop:relay_data(Directory_Node, {num_keys, {R4, Self}}),
+    timer:sleep(50),
+    [{R3, undefined}, {R4, 0}] = check_worker([]),
+    false = coop:is_live(Value_Node),
+    true = coop:is_live(Directory_Node),
+
+    meck:unload(coop).
+
+check_directory_empty(Directory_Node, Key) ->
+    Self = self(),
     R1 = make_ref(),
     coop:relay_data(Directory_Node, {num_keys, {R1, Self}}),
     R2 = make_ref(),
@@ -162,51 +191,78 @@ value_request_start(Key, Exp_Value) ->
     coop:relay_data(Directory_Node, {num_keys, {R3, Self}}),
     timer:sleep(50),
     [{R1, 0}, {R2, undefined}, {R3, 0}] = check_worker([]),
+    ok.
+    
+insert_value(Directory_Node, Key, Exp_Value) ->
+    Self = self(),
 
     %% Create a datum Coop_Node...
     Value_Node = esp_cache:new_datum_node(Self, Exp_Value),
     ?CTL_MSG({link, _Pids2}) = receive B -> B after 1000 -> timeout end,
     coop:relay_data(Directory_Node, {new, Key, Value_Node}),
+    R1 = make_ref(),
+    coop:relay_data(Directory_Node, {num_keys, {R1, Self}}),
+    timer:sleep(50),
+    [{R1, 1}] = check_worker([]),
+    true = coop:is_live(Value_Node),
+
+    %% Check that value is present.
+    R2 = make_ref(),
+    coop:relay_data(Directory_Node, {lookup, {Key, {R2, Self}}}),
+    R3 = make_ref(),
+    coop:relay_data(Directory_Node, {lookup, {Key, {R3, Self}}}),
+    timer:sleep(50),
+    [{R2, Exp_Value}, {R3, Exp_Value}] = check_worker([]),
     R4 = make_ref(),
     coop:relay_data(Directory_Node, {num_keys, {R4, Self}}),
     timer:sleep(50),
     [{R4, 1}] = check_worker([]),
     true = coop:is_live(Value_Node),
+    
+    Value_Node.
 
-    %% Check that value is present.
-    R5 = make_ref(),
-    coop:relay_data(Directory_Node, {lookup, {Key, {R5, Self}}}),
-    R6 = make_ref(),
-    coop:relay_data(Directory_Node, {lookup, {Key, {R6, Self}}}),
+value_request_add_replace(_Config) ->
+    Key1 = foo,
+    Exp_Value = 13,
+    Chngd_Value = 27,
+
+    %% Create a directory node...
+    Self = self(),
+    meck:new(coop, [passthrough]),
+    meck:expect(coop, get_kill_switch, fun(_Coop_Head) -> Self end),
+    Fake_Coop_Head = {coop_head, Self, Self},
+    Directory_Node = esp_cache:new_directory_node(Fake_Coop_Head),
+    ?CTL_MSG({link, _Pids1}) = receive A -> A after 1000 -> timeout end,
+    check_directory_empty(Directory_Node, Key1),
+
+    %% Add a new value, then change it...
+    Value_Node = insert_value(Directory_Node, Key1, Exp_Value),
+    R1 = make_ref(),
+    coop:relay_data(Directory_Node, {replace, {Key1, {?VALUE, Chngd_Value}, {R1, Self}}}),
+    R2 = make_ref(),
+    coop:relay_data(Directory_Node, {lookup, {Key1, {R2, Self}}}),
     timer:sleep(50),
-    [{R5, Exp_Value}, {R6, Exp_Value}] = check_worker([]),
-    R7 = make_ref(),
-    coop:relay_data(Directory_Node, {num_keys, {R7, Self}}),
-    timer:sleep(50),
-    [{R7, 1}] = check_worker([]),
+    [{R1, Chngd_Value}, {R2, Chngd_Value}] = check_worker([]),
     true = coop:is_live(Value_Node),
 
-    %% Delete the value and check the count.
-    R8 = make_ref(),
-    coop:relay_data(Directory_Node, {remove, {Key, {R8, Self}}}),
+    %% Try to add a value when it already exists...
+    R3 = make_ref(),
+    coop:relay_data(Directory_Node, {add, {Key1, {?VALUE, Chngd_Value}, {R3, Self}}}),
     timer:sleep(50),
-    R9 = make_ref(),
-    coop:relay_data(Directory_Node, {num_keys, {R9, Self}}),
-    timer:sleep(50),
-    [{R8, Exp_Value}, {R9, 0}] = check_worker([]),
-    false = coop:is_live(Value_Node),
+    [{R3, defined}] = check_worker([]),
+    true = coop:is_live(Value_Node),
 
-    %% Delete again to make sure it doesn't fail...
-    RA = make_ref(),
-    coop:relay_data(Directory_Node, {remove, {Key, {RA, Self}}}),
-    RB = make_ref(),
-    coop:relay_data(Directory_Node, {num_keys, {RB, Self}}),
-    timer:sleep(50),
-    [{RA, undefined}, {RB, 0}] = check_worker([]),
-    false = coop:is_live(Value_Node),
-    true = coop:is_live(Directory_Node),
+    %% Try to replace a non-existent key's value...
+    %% Key2 = bar,
+    %% R4 = make_ref(),
+    %% coop:relay_data(Directory_Node, {num_keys, {R4, Self}}),
+    %% R5 = make_ref(),
+    %% coop:relay_data(Directory_Node, {replace, {Key2, {?VALUE, Exp_Value}, {R5, Self}}}),
+    %% R6 = make_ref(),
+    %% coop:relay_data(Directory_Node, {num_keys, {R6, Self}}),
+    %% timer:sleep(50),
+    %% [{R4, 1}, {R5, Exp_Value}, {R6, 2}] = check_worker([]),
+    %% true = coop:is_live(Value_Node),
 
     meck:unload(coop).
     
-value_request_lookup(_Config) ->
-    value_request_start(foo, 29).
