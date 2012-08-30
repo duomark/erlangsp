@@ -102,7 +102,7 @@ new_cache_coop(Num_Workers) ->
 
 -type lookup_request() :: {any(), receiver()}.
 -type fep_request() :: {any(), value_request(), receiver()}.
--type fetch_cmd() :: lookup | find_else_put.
+-type fetch_cmd() :: lookup | find_else_add.
 
 %% -type stats_cmd() :: num_keys.
 
@@ -126,7 +126,7 @@ value_request(State, {replace, {Key, _Chg_Type, _Rcvr} } = Req) -> change_value(
 
 %% Return the cached value to a dynamic downstream coop_node...
 value_request(State, {lookup,        {Key, _Rcvr}        } = Req) -> return_value(State, Req, get(Key));
-value_request(State, {find_else_put, {Key, _Type, _Rcvr} } = Req) -> return_value(State, Req, get(Key));
+value_request(State, {find_else_add, {Key, _Type, _Rcvr} } = Req) -> return_value(State, Req, get(Key));
 
 %% Return the number of active keys...
 value_request(State, {num_keys, {Ref, Rcvr}}) ->
@@ -170,7 +170,7 @@ change_value(State, {add, {_Key, _Chg_Type, {Ref, Requester}}},        _Coop_Nod
 
 
 %% Send the cached value to the requester.
-return_value(State, {find_else_put, {_Key, _Add_Type, _Req}     = Args}, undefined) -> value_request(State, {add, Args});
+return_value(State, {find_else_add, {_Key, _Add_Type, _Req}     = Args}, undefined) -> value_request(State, {add, Args});
 return_value(State, {lookup,        {_Key, {Ref, Requester}}          }, undefined) -> coop:relay_data(Requester, {Ref, undefined}),       {State, noop};
 return_value(State, {_Any_Type,     {_Key, {_Ref, _Rqstr} = Requester}}, Coop_Node) -> coop:relay_data(Coop_Node, {get_value, Requester}), {State, noop}.
 
