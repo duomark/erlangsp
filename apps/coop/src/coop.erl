@@ -15,7 +15,8 @@
 -export([
          new_pipeline/2, new_fanout/3,
          make_dag_node/3, make_dag_node/4,
-         get_kill_switch/1, relay_data/2, relay_high_priority_data/2
+         get_kill_switch/1,
+         is_live/1, relay_data/2, relay_high_priority_data/2
         ]).
 
 %% For testing purposes only.
@@ -57,6 +58,11 @@ make_dag_node(Name, {_Imod, _Ifun, _Iargs} = Init_Fn, {_Mod, _Fun} = Task_Fn, Da
 get_kill_switch(Coop_Head) ->
     coop_head:get_kill_switch(Coop_Head).
 
+%% Check if a Coop_Head, Coop_Node or raw Pid is alive.
+is_live(Pid) when is_pid(Pid) -> is_process_alive(Pid);
+is_live({coop_head, Ctl_Pid, Data_Pid}) -> is_process_alive(Ctl_Pid) andalso is_process_alive(Data_Pid);
+is_live({coop_node, Ctl_Pid, Data_Pid}) -> is_process_alive(Ctl_Pid) andalso is_process_alive(Data_Pid).
+    
 %% Relay data is used to deliver Node output to Coop_Head, Coop_Node or raw Pid.
 relay_data(Pid, Data) when is_pid(Pid) ->
     Pid ! Data,
