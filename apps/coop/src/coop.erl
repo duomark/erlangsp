@@ -38,7 +38,7 @@ new_pipeline([#coop_dag_node{} | _More] = Node_Fns, Receiver) ->
     Head_Kill_Switch = coop_kill_link_rcv:make_kill_switch(),
     coop_head:new(Head_Kill_Switch, Coop_Root_Node).
 
-new_fanout(#coop_dag_node{} = Router_Fn, [#coop_dag_node{}] = Workers, Receiver) ->
+new_fanout(#coop_dag_node{} = Router_Fn, [#coop_dag_node{} | _More] = Workers, Receiver) ->
     Body_Kill_Switch = coop_kill_link_rcv:make_kill_switch(),
     {Coop_Root_Node, _Fanout_Graph, _Coops_Graph} = fanout(Body_Kill_Switch, Router_Fn, Workers, Receiver),
     Head_Kill_Switch = coop_kill_link_rcv:make_kill_switch(),
@@ -115,16 +115,17 @@ spawn_pipeline_stage(Kill_Switch, Coops, {Name, #coop_node_fn{init=Init_Fn, task
 %%----------------------------------------------------------------------
 %% Fanout patterns
 %%----------------------------------------------------------------------
-fanout(Kill_Switch, #coop_dag_node{} = Router_Fn, [#coop_dag_node{} | _More] = Workers, Receiver) ->
+fanout(Kill_Switch, #coop_dag_node{name=Inbound} = Router_Fn,
+       [#coop_dag_node{} | _More] = Workers, Receiver) ->
     Fanout_Graph = coop_flow:fanout(Router_Fn, Workers, Receiver),
-    fanout(Kill_Switch, Fanout_Graph).
+    fanout(Inbound, Kill_Switch, Fanout_Graph).
     
-fanout(Kill_Switch, Fanout_Template_Graph) ->
+fanout(Inbound, Kill_Switch, Fanout_Template_Graph) ->
     Coops_Graph = digraph:new([acyclic]),
-    {inbound, #coop_node_fn{init=Inbound_Init_Fn, task=Inbound_Task_Fn, flow=Inbound_Dataflow}}
-        = digraph:vertex(Fanout_Template_Graph, inbound),
+    {Inbound, #coop_node_fn{init=Inbound_Init_Fn, task=Inbound_Task_Fn, flow=Inbound_Dataflow}}
+        = digraph:vertex(Fanout_Template_Graph, Inbound),
     Inbound_Node = coop_node:new(Kill_Switch, Inbound_Task_Fn, Inbound_Init_Fn, Inbound_Dataflow),
-    digraph:add_vertex(Coops_Graph, inbound, Inbound_Node),
+    digraph:add_vertex(Coops_Graph, Inbound, Inbound_Node),
     {Has_Fan_In, Rcvr} = case digraph:vertex(Fanout_Template_Graph, outbound) of
                              false -> {false, none};
                              {outbound, Receiver} ->
