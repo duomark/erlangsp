@@ -1,14 +1,16 @@
 Erlang Services Platform (Erlang/SP)
 ==================================
 
-Erlang/SP is a adjunct to Erlang/OTP that is designed to scale to 10Ks of processor cores. OTP allows a designer to architect distributed systems out of single process behaviours to create scaffoldings in the 100s-1000s of process range geared around a single permanent hierarchical application or a set of single hierarchical applications. SP eschews applications in favor of peer services that replicate and fade as needed, constructing solutions on an architecture functionally composed with patterns of Cooperating Processes. The fundamental unit is a co-op rather than a Pid.
+Erlang/SP is a adjunct to Erlang/OTP that is designed to scale to 10Ks of processor cores. OTP allows a designer to architect distributed systems out of single process behaviours to create scaffoldings in the 100s-1000s of process range geared around a single permanent hierarchical application or a set of single hierarchical applications. SP eschews applications in favor of peer services that replicate and fade as needed, constructing solutions on an architecture functionally composed with patterns of Cooperating Processes (Co-ops). The fundamental unit is a Co-op rather than a Pid.
 
-The ideas behind Erlang/SP are evolving rapidly and constantly in flux. I welcome feedback, but expect any and all interfaces to change without notice. This is an experiment that can run comfortably alongside OTP and is only a "replacement" in the sense that it revisits the tradeoffs and assumptions underlying the philosphy of OTP.
+The ideas behind Erlang/SP are evolving rapidly and constantly in flux. I welcome feedback, but expect any and all interfaces to change without notice. This is an experiment that can run comfortably alongside OTP but revisits the tradeoffs and assumptions underlying the philosphy of OTP.
 
 The basic components of an Erlang/SP solution are:
 
   * digraph: An instance of the erlang:digraph module to describe a co-op structure
   * co-op: A task-specific (pipeline, round-robin, broadcast) collection of cooperating processes
+
+Users of the library will primarily deal with Co-op instances. The digraphs are generally hidden inside of Co-ops and used to guide the behavior for replication and visualization / reflection.
 
 All components offer both Control and Data channels for more efficient management of services. Supervisor behaviour will not resemble the current incarnation of OTP, and allocation of processes will be more of a batch/bulk-oriented operation (probably eventually requiring VM tweaks to enhance process spawning speed). Some tests of parallel spawning will be done soon.
 
