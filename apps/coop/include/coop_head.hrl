@@ -7,6 +7,6 @@
           log         :: pid(),
           trace       :: pid(),
           reflect     :: pid(),
-          coop_root_node :: coop_node()
+          coop_root_node :: coop_node() | none
          }).
 

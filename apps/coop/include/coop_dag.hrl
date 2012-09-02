@@ -14,6 +14,11 @@
 -type data_flow_method() :: single_data_flow_method() | multiple_data_flow_method().
 
 -type downstream_workers() :: queue().
+-type coop_data_options() :: [proplists:property()].
+
+-record(coop_node_options, {
+          access_coop_head = false :: boolean()
+         }).
 
 -type coop_task_fn() :: {module(), atom()}.
 -type coop_init_fn() :: {module(), atom(), any()}.
@@ -21,6 +26,7 @@
 -record(coop_node_fn, {
           init             :: coop_init_fn(),
           task             :: coop_task_fn(),
+          options = []     :: coop_data_options(),
           flow = broadcast :: data_flow_method()
          }).
 

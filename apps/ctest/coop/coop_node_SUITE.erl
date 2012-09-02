@@ -2,6 +2,7 @@
 
 -include_lib("../../erlangsp/include/license_and_copyright.hrl").
 -include_lib("common_test/include/ct.hrl").
+-include("../../coop/include/coop_dag.hrl").
 
 %% Suite functions
 -export([
@@ -64,18 +65,22 @@ end_per_group(_Group, _Config) -> ok.
 init_noop({}) -> {}.
 x3({}, N) -> {{}, N * 3}.
 
+make_fake_head() ->
+    Head_Kill_Switch = coop_kill_link_rcv:make_kill_switch(),
+    coop_head:new(Head_Kill_Switch, none).
+
 create_new_coop_node_args() ->
     Kill_Switch = ?CK:make_kill_switch(),
     true = is_process_alive(Kill_Switch),
-    [Kill_Switch, {?MODULE, x3}, {?MODULE, init_noop, {}}].
+    [make_fake_head(), Kill_Switch, {?MODULE, x3}, {?MODULE, init_noop, {}}, []].
 
 create_new_coop_node_args(Dist_Type) ->
     Kill_Switch = ?CK:make_kill_switch(),
     true = is_process_alive(Kill_Switch),
-    [Kill_Switch, {?MODULE, x3}, {?MODULE, init_noop, {}}, Dist_Type].
+    [make_fake_head(), Kill_Switch, {?MODULE, x3}, {?MODULE, init_noop, {}}, [], Dist_Type].
 
 node_ctl_kill_one_proc(_Config) ->
-    Args = [Kill_Switch, _Node_Fn, _Init_Fn] = create_new_coop_node_args(),
+    Args = [_Coop_Head, Kill_Switch, _Node_Fn, _Init_Fn, _Opts] = create_new_coop_node_args(),
     {coop_node, Node_Ctl_Pid, Node_Task_Pid} = apply(?TM, new, Args),
     true = is_process_alive(Node_Ctl_Pid),
     true = is_process_alive(Node_Task_Pid),
@@ -86,7 +91,7 @@ node_ctl_kill_one_proc(_Config) ->
     false = is_process_alive(Kill_Switch).
 
 node_ctl_kill_two_proc(_Config) ->
-    Args = [Kill_Switch, _Node_Fn, _Init_Fn] = create_new_coop_node_args(),
+    Args = [_Coop_Head, Kill_Switch, _Node_Fn, _Init_Fn, _Opts] = create_new_coop_node_args(),
     {coop_node, Node_Ctl_Pid1, Node_Task_Pid1} = apply(?TM, new, Args),
     true = is_process_alive(Node_Ctl_Pid1),
     true = is_process_alive(Node_Task_Pid1),
@@ -102,7 +107,7 @@ node_ctl_kill_two_proc(_Config) ->
     false = is_process_alive(Kill_Switch).
 
 node_ctl_stop_one_proc(_Config) ->
-    Args = [Kill_Switch, _Node_Fn, _Init_Fn] = create_new_coop_node_args(),
+    Args = [_Coop_Head, Kill_Switch, _Node_Fn, _Init_Fn, _Opts] = create_new_coop_node_args(),
     Coop_Node = {coop_node, Node_Ctl_Pid, Node_Task_Pid} = apply(?TM, new, Args),
     true = is_process_alive(Node_Ctl_Pid),
     true = is_process_alive(Node_Task_Pid),
@@ -130,20 +135,23 @@ get_result_data(Pid) ->
     receive Any -> Any after 50 -> timeout end.
 
 setup_no_downstream() ->    
-    Args = [_Kill_Switch, _Node_Fn, _Init_Fn] = create_new_coop_node_args(),
+    Args = [Coop_Head, _Kill_Switch, _Node_Fn, _Init_Fn, _Opts] = create_new_coop_node_args(),
     Coop_Node = apply(?TM, new, Args),
+    coop_head:set_root_node(Coop_Head, Coop_Node),
     [] = ?TM:node_task_get_downstream_pids(Coop_Node),
     Coop_Node.
 
 setup_no_downstream(Dist_Type) ->    
-    Args = [_Kill_Switch, _Node_Fn, _Init_Fn, Dist_Type] = create_new_coop_node_args(Dist_Type),
+    Args = [Coop_Head, _Kill_Switch, _Node_Fn, _Init_Fn, _Opts, Dist_Type]
+        = create_new_coop_node_args(Dist_Type),
     Coop_Node = apply(?TM, new, Args),
+    coop_head:set_root_node(Coop_Head, Coop_Node),
     [] = ?TM:node_task_get_downstream_pids(Coop_Node),
     Coop_Node.
     
 task_compute_one(_Config) ->
     Coop_Node = {coop_node, _Node_Ctl_Pid, Node_Task_Pid} = setup_no_downstream(),
-
+    
     ?TM:node_task_add_downstream_pids(Coop_Node, []),
     [] = ?TM:node_task_get_downstream_pids(Coop_Node),
 
@@ -331,8 +339,9 @@ sys_install(_Config) ->
     Coop_Node = {coop_node, _Node_Ctl_Pid, Node_Task_Pid} = setup_no_downstream(round_robin),
     Pid = spawn_link(fun() ->
                              %% Trace results...
-                             receive {15, 30} -> ok;
-                                      Bad_Result -> exit(Bad_Result)
+                             receive
+                                 {15, 30} -> ok;
+                                 Bad_Result -> exit(Bad_Result)
                               after 2000 -> exit(timeout)
                               end,
                              
@@ -344,17 +353,18 @@ sys_install(_Config) ->
                              end
                      end),
     F = fun
-            ({Ins, Outs, 3}, _Any, {round_robin, {}}) ->
+            ({Ins, Outs, 3}, _Any, {round_robin, #coop_node_options{}, {}}) ->
                 Pid ! {Ins, Outs};
-            ({Ins, Outs, Count}, {in, Amt}, {round_robin, {}}) when is_integer(Amt) ->
+            ({Ins, Outs, Count}, {in, Amt}, {round_robin, #coop_node_options{}, {}}) when is_integer(Amt) ->
                 {Ins+Amt, Outs, Count+1};
-            ({Ins, Outs, Count}, {out, Amt, _Pid}, {round_robin, {}}) when is_integer(Amt) ->
+            ({Ins, Outs, Count}, {out, Amt, _Pid}, {round_robin, #coop_node_options{}, {}}) when is_integer(Amt) ->
                 {Ins, Outs+Amt, Count};
-            ({Ins, Outs, Count}, {in, {add_downstream, _Id}}, {round_robin, {}}) ->
+            ({Ins, Outs, Count}, {in, {add_downstream, _Id}}, {round_robin, #coop_node_options{}, {}}) ->
                 {Ins, Outs, Count};
-            ({Ins, Outs, Count}, {in, {get_downstream, _Id}}, {round_robin, {}}) ->
+            ({Ins, Outs, Count}, {in, {get_downstream, _Id}}, {round_robin, #coop_node_options{}, {}}) ->
                 {Ins, Outs, Count};
             (_State, Unknown, _Extra) ->
+                error_logger:info_msg("~p ~p ~p~n", [_State, Unknown, _Extra]),
                 Pid ! {unknown_msg_rcvd, Unknown}
         end,
     ok = ?TM:node_ctl_install_trace_fn(Coop_Node, {F, {0,0,0}}, self()),

@@ -50,7 +50,7 @@
 
 %% Internal functions that are exported (not part of the external API)
 -export([
-         get_root_pid/1,
+         get_root_pid/1, set_root_node/2,
 
          %% Send commands to coop_head data task process...
          send_ctl_msg/2, send_ctl_change_timeout/2,
@@ -93,7 +93,11 @@
 -spec send_data_msg(coop_head(), any()) -> ok.
 -spec send_priority_data_msg(coop_head(), any()) -> ok.
 -spec send_data_change_timeout(coop_head(), none | pos_integer()) -> ok.
--spec get_root_pid(coop_head()) -> pid().
+
+-spec get_kill_switch(coop_head()) -> pid().
+-spec get_root_pid(coop_head()) -> pid() | none.
+
+-spec set_root_node(coop_head(), coop_node()) -> boolean().
 
 -spec stop(coop_head()) -> ok.
 -spec suspend_root(coop_head()) -> ok.
@@ -149,13 +153,19 @@ wait_ctl_response(Type, Ref) ->
     receive {Type, Ref, Info} -> Info
     after ?SYNC_RCV_TIMEOUT -> timeout
     end.
-     
+
+set_root_node({coop_head, _Head_Ctl_Pid, _Head_Data_Pid} = Coop_Head,
+              {coop_node, _Node_Ctl_Pid, _Node_Task_Pid} = Coop_Node) ->
+    Ref = make_ref(),
+    send_ctl_msg(Coop_Head, {set_root_node, Coop_Node, {Ref, self()}}),
+    wait_ctl_response(set_root_node, Ref).
+
 
 %%----------------------------------------------------------------------
 %% Create a new coop_head. A coop_head is represented by a pair of
 %% pids: a control process and a data process.
 %%----------------------------------------------------------------------
--spec new(pid(), coop_node()) -> coop_head().
+-spec new(pid(), coop_node() | none) -> coop_head().
 
 new(Kill_Switch, Coop_Node)
   when is_pid(Kill_Switch) ->
@@ -178,6 +188,8 @@ new(Kill_Switch, Coop_Node)
     {coop_head, Ctl_Pid, Data_Pid}.
 
 
+make_root_pid(none) ->
+    proc_lib:spawn(coop_head_root_rcv, sync_pass_thru_loop, [none]);
 make_root_pid({coop_node, _Node_Ctl_Pid, _Node_Data_Pid} = Coop_Node) ->
     proc_lib:spawn(coop_head_root_rcv, sync_pass_thru_loop, [Coop_Node]).
 

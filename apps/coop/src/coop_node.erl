@@ -14,7 +14,7 @@
 %% Graph API
 -export([
          %% Create coop_node instances...
-         new/3, new/4,
+         new/5, new/6,
 
          %% Send commands to coop_node control process...
          node_ctl_clone/1, node_ctl_stop/1,
@@ -36,11 +36,11 @@
 -export([echo_loop/1, link_loop/0]).
 
 %%----------------------------------------------------------------------
-%% A Coop Node is a single worker element of a Coop. Every worker
+%% A Co-op Node is a single worker element of a Co-op. Every worker
 %% element exists to accept data, transform it and pass it on.
 %%
-%% There are separate pids internal to a Coop Node used to:
-%%    1) terminate the entire coop (kill_switch)
+%% There are separate pids internal to a Co-op Node used to:
+%%    1) terminate the entire co-op (kill_switch)
 %%    2) receive control requests (ctl)
 %%    3) execute the transform function (task execs task_fn)
 %%    4) relay trace information (trace)
@@ -55,23 +55,28 @@
 %% Create a new coop_node. A coop_node is represented by a pair of
 %% pids: a control process and a data task process.
 %%----------------------------------------------------------------------
--spec new(pid(), coop_task_fn(), coop_init_fn()) -> coop_node().
--spec new(pid(), coop_task_fn(), coop_init_fn(), data_flow_method()) -> coop_node().
+-spec new(coop_head(), pid(), coop_task_fn(), coop_init_fn(), coop_data_options()) -> coop_node().
+-spec new(coop_head(), pid(), coop_task_fn(), coop_init_fn(), coop_data_options(), data_flow_method()) -> coop_node().
 
 %% Broadcast is default for downstream data distribution.
 %% Optimized for special case of 1 downstream pid.
-new(Kill_Switch, Node_Fn, Init_Fn) ->
-    new(Kill_Switch, Node_Fn, Init_Fn, broadcast).
+new(Coop_Head, Kill_Switch, Node_Fn, Init_Fn, Data_Opts) ->
+    new(Coop_Head, Kill_Switch, Node_Fn, Init_Fn, Data_Opts, broadcast).
 
 %% Override downstream data distribution.
-new(Kill_Switch, {_Task_Mod, _Task_Fn} = Node_Fn, {_Mod, _Fun, _Args} = Init_Fn, Data_Flow_Method)
-  when is_pid(Kill_Switch), is_atom(_Task_Mod), is_atom(_Task_Fn), is_atom(_Mod), is_atom(_Fun),
+new({coop_head, _Head_Ctl_Pid, _Head_Data_Pid} = Coop_Head, Kill_Switch,
+    {_Task_Mod, _Task_Fn} = Node_Fn, {_Mod, _Fun, _Args} = Init_Fn,
+    Data_Opts, Data_Flow_Method)
+
+  when is_pid(_Head_Ctl_Pid), is_pid(_Head_Data_Pid), is_pid(Kill_Switch),
+       is_atom(_Task_Mod), is_atom(_Task_Fn), is_atom(_Mod), is_atom(_Fun),
+       is_list(Data_Opts),
        (        Data_Flow_Method =:= random
          orelse Data_Flow_Method =:= round_robin
          orelse Data_Flow_Method =:= broadcast   ) ->
 
     %% Start the data task process...
-    Task_Pid = make_data_task_pid(Node_Fn, Init_Fn, Data_Flow_Method),
+    Task_Pid = make_data_task_pid(Coop_Head, Node_Fn, Init_Fn, Data_Opts, Data_Flow_Method),
 
     %% Start support function processes...
     {Trace_Pid, Log_Pid, Reflect_Pid} = make_support_pids(),
@@ -84,9 +89,9 @@ new(Kill_Switch, {_Task_Mod, _Task_Fn} = Node_Fn, {_Mod, _Fun, _Args} = Init_Fn,
     coop_kill_link_rcv:link_to_kill_switch(Kill_Switch, [Ctl_Pid, Task_Pid, Trace_Pid, Log_Pid, Reflect_Pid]),
     {coop_node, Ctl_Pid, Task_Pid}.
 
-make_data_task_pid(Node_Fn, Init_Fn, Data_Flow_Method) ->
+make_data_task_pid(Coop_Head, Node_Fn, Init_Fn, Data_Opts, Data_Flow_Method) ->
     Worker_Set = case Data_Flow_Method of random -> {}; _Other -> queue:new() end,
-    Task_Args = [Node_Fn, Init_Fn, Worker_Set, Data_Flow_Method],
+    Task_Args = [Coop_Head, Node_Fn, Init_Fn, Worker_Set, Data_Opts, Data_Flow_Method],
     proc_lib:spawn(coop_node_data_rcv, start_node_data_loop, Task_Args).
 
 make_support_pids() ->
@@ -155,13 +160,15 @@ node_task_add_downstream_pids({coop_node, _Node_Ctl_Pid, Node_Task_Pid}, Pids) w
 
 %% Deliver data to a downstream Pid or Coop_Node.
 node_task_deliver_data({coop_node, _Node_Ctl_Pid, Node_Task_Pid}, Data) ->
-    Node_Task_Pid ! Data, ok;
+    Node_Task_Pid ! Data,
+    ok;
 node_task_deliver_data(Pid, Data) when is_pid(Pid) ->
-    Pid ! Data, ok.
+    Pid ! Data,
+    ok.
 
 
 %%----------------------------------------------------------------------
-%% Coop Node receive loops for support pids.
+%% Co-op Node receive loops for support pids.
 %%----------------------------------------------------------------------
 
 -spec echo_loop(string()) -> no_return().

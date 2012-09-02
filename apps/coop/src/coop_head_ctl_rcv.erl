@@ -85,6 +85,16 @@ msg_loop(#coop_head_state{} = State, Root_Pid, Timeout, Debug_Opts) ->
         {?DAG_TOKEN, ?CTL_TOKEN, {get_root_pid, {Ref, From}}} ->
             From ! {get_root_pid, Ref, Root_Pid},
             msg_loop(State, Root_Pid, Timeout, Debug_Opts);
+        {?DAG_TOKEN, ?CTL_TOKEN, {set_root_node, {coop_node, _, _} = Coop_Node, {Ref, From}} = Msg} ->
+            case State#coop_head_state.coop_root_node of
+                none ->
+                    Root_Pid ! {?CTL_TOKEN, Msg},
+                    New_State = State#coop_head_state{coop_root_node=Coop_Node},
+                    msg_loop(New_State, Root_Pid, Timeout, Debug_Opts);
+                _Already_Set ->
+                    From ! {set_root_node, Ref, false},
+                    msg_loop(State, Root_Pid, Timeout, Debug_Opts)
+            end;
 
         %% Priority data messages bypass data queue via control channel,
         %% but can clog control processing waiting for ACKs. The timeout

@@ -44,6 +44,10 @@ init([f1]) -> f1;
 init([f2]) -> f2;
 init([f3]) -> f3.
 
+make_fake_head() ->
+    Head_Kill_Switch = coop_kill_link_rcv:make_kill_switch(),
+    coop_head:new(Head_Kill_Switch, none).
+
 %% Init state and looping state are unused, but checked placeholders.
 plus2(f1, Num)  -> {f1, Num+2}.
 times3(f2, Num) -> {f2, Num*3}.
@@ -94,7 +98,8 @@ pipeline(_Config) ->
     Pid = spawn_link(?MODULE, receive_pipe_results, []),
     Pipe_Stages = example_pipeline_fns(),
     Kill_Switch = coop_kill_link_rcv:make_kill_switch(),
-    {First_Stage_Node, _Template_Graph, Coops_Graph} = coop:pipeline(Kill_Switch, Pipe_Stages, Pid),
+    {First_Stage_Node, _Template_Graph, Coops_Graph}
+        = coop:pipeline(make_fake_head(), Kill_Switch, Pipe_Stages, Pid),
     Pipe_Stats = digraph:info(Coops_Graph),
     acyclic = proplists:get_value(cyclicity, Pipe_Stats),
     coop:relay_data(First_Stage_Node, 7),
@@ -166,7 +171,7 @@ make_fanout_coop(Dataflow_Type, Num_Workers, Receiver_Pid) ->
                           name = "inc_by_" ++ integer_to_list(N),
                           label = #coop_node_fn{init={?MODULE, rr_init, [N]}, task={?MODULE, rr_inc}}}
                        || N <- lists:seq(1, Num_Workers)],
-    coop:fanout(Kill_Switch, Router_Fn, Worker_Node_Fns, Receiver_Pid).
+    coop:fanout(make_fake_head(), Kill_Switch, Router_Fn, Worker_Node_Fns, Receiver_Pid).
     
 fanout_round_robin(_Config) ->
     Num_Results = 6,
