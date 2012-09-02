@@ -1,6 +1,6 @@
 REBAR=./rebar
 ALL_APPS_DIRS=apps/*
-ALL_EXAMPLE_DIRS=apps/*/examples/*
+ALL_EXAMPLE_DIRS=apps/examples/*
 CT_LOG_DIRS=apps/ctest/logs
 
 all: deps compile
@@ -14,7 +14,7 @@ compile:
 	@${REBAR} compile
 
 dialyze: all
-	@dialyzer -Wrace_conditions apps/*/ebin apps/*/examples/*/ebin
+	@dialyzer -Wrace_conditions ${ALL_APPS_DIRS}/ebin ${ALL_EXAMPLE_DIRS}/ebin
 
 gc: crash
 	@echo 'Removing all emacs backup files'
