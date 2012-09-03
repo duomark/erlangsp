@@ -122,7 +122,7 @@ node_ctl_log(Coop_Node, Flag, From) ->
     Ref = make_ref(),
     ?SEND_CTL_MSG(Coop_Node, log, Flag, {Ref, From}),
     wait_ctl_response(node_ctl_log, Ref).
-    
+
 node_ctl_log_to_file(Coop_Node, File, From) ->
     Ref = make_ref(),
     ?SEND_CTL_MSG(Coop_Node, log_to_file, File, {Ref, From}),
