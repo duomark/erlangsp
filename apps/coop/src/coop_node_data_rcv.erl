@@ -20,6 +20,7 @@
          format_status/2, debug_coop/3
         ]).
 
+-include("coop.hrl").
 -include("coop_dag.hrl").
 
 
@@ -131,7 +132,7 @@ handle_ctl(_Coop_Head, Downstream_Pids, _Data_Opts,  Data_Flow_Method, {get_down
     reply_downstream_pids_as_list(Data_Flow_Method, Downstream_Pids, Ref, From),
     Downstream_Pids;
 handle_ctl(_Coop_Head, Downstream_Pids, _Data_Opts, _Data_Flow_Method, _Unknown_Cmd) ->
-    error_logger:info_msg("Unknown DAG Cmd: ~p~n", [_Unknown_Cmd]),
+    error_logger:info_msg("~p Unknown DAG Cmd: ~p~n", [?MODULE, _Unknown_Cmd]),
     Downstream_Pids.
 
 do_add_downstream(random, Downstream_Pids, New_Pids) ->

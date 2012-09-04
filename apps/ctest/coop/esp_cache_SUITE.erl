@@ -2,25 +2,32 @@
 
 -include("../../erlangsp/include/license_and_copyright.hrl").
 -include_lib("common_test/include/ct.hrl").
--include("../../coop/include/coop_dag.hrl").
--include("../../examples/esp_cache/include/esp_cache.hrl").
 
 %% Suite functions
 -export([all/0, init_per_suite/1, end_per_suite/1]).
 
 %% Test Coop Node functionality individually
--export([datum_value/1,
+-export([
+         datum_value/1,
          worker_value/1, worker_mfa/1, worker_replace/1,
          value_request_lookup/1, value_request_add_replace/1
         ]).
 
+%% Test full coop
+-export([cache_coop/1]).
+
 %% Spawned functions must be exported
 -export([check_worker/2, compute_value/1]).
+
+-include("../../coop/include/coop.hrl").
+-include("../../coop/include/coop_dag.hrl").
+-include("../../examples/esp_cache/include/esp_cache.hrl").
 
 all() -> [
           datum_value,
           worker_value, worker_mfa, worker_replace,
-          value_request_lookup, value_request_add_replace
+          value_request_lookup, value_request_add_replace,
+          cache_coop
          ].
 
 init_per_suite(Config) -> Config.
@@ -30,12 +37,16 @@ end_per_suite(_Config) -> ok.
 %%----------------------------------------------------------------------
 %% Final stage Datum Coop Node tests
 %%----------------------------------------------------------------------
+make_fake_head() ->
+    Head_Kill_Switch = coop_kill_link_rcv:make_kill_switch(),
+    coop_head:new(Head_Kill_Switch, none).
+
 datum_value(_Config) ->
 
     %% Get original value...
     Kill_Switch = coop_kill_link_rcv:make_kill_switch(),
-    {coop_node, _Node_Ctl_Pid, Node_Task_Pid} = Coop_Node
-        = esp_cache:new_datum_node(Kill_Switch, 17),
+    #coop_node{task_pid=Node_Task_Pid} = Coop_Node
+        = esp_cache:new_datum_node(make_fake_head(), Kill_Switch, 17),
     R1 = make_ref(),
     coop:relay_data(Coop_Node, {get_value, {R1, self()}}),
     17 = check_datum(R1),
@@ -73,7 +84,7 @@ worker_test_age(Value_Expr, Answer) ->
     Self = self(),
     meck:new(coop, [passthrough]),
     meck:expect(coop, get_kill_switch, fun(_Coop_Head) -> Self end),
-    Fake_Coop_Head = {coop_head, Self, Self},
+    Fake_Coop_Head = #coop_head{ctl_pid=Self, data_pid=Self},
     Coop_Node = esp_cache:new_worker_node(Fake_Coop_Head),
     ?CTL_MSG({link, _Pids1}) = receive A -> A after 1000 -> timeout end,
 
@@ -84,7 +95,7 @@ worker_test_age(Value_Expr, Answer) ->
     Results = check_worker([]),
     2 = length(Results),
     [?CTL_MSG({link, _Pids2})] = [I || I <- Results, element(1,element(3, I)) =:= link],
-    [?DATA_MSG({new, age, {coop_node, _, _}})]
+    [?DATA_MSG({new, age, #coop_node{}})]
         = [I || I <- Results, element(1, element(3, I)) =:= new],
     timer:sleep(50),
     Rcvr ! {results, Self},
@@ -113,7 +124,7 @@ worker_replace(_Config) ->
     Self = self(),
     meck:new(coop, [passthrough]),
     meck:expect(coop, get_kill_switch, fun(_Coop_Head) -> Self end),
-    Fake_Coop_Head = {coop_head, Self, Self},
+    Fake_Coop_Head = #coop_head{ctl_pid=Self, data_pid=Self},
     Coop_Node = esp_cache:new_worker_node(Fake_Coop_Head),
     ?CTL_MSG({link, _Pids1}) = receive A -> A after 1000 -> timeout end,
 
@@ -124,7 +135,7 @@ worker_replace(_Config) ->
     Results = check_worker([]),
     2 = length(Results),
     [?CTL_MSG({link, _Pids2})] = [I || I <- Results, element(1,element(3, I)) =:= link],
-    [?DATA_MSG({new, age, {coop_node, _, _} = New_Datum_Cache_Node})]
+    [?DATA_MSG({new, age, #coop_node{} = New_Datum_Cache_Node})]
         = [I || I <- Results, element(1, element(3, I)) =:= new],
     timer:sleep(50),
     Rcvr ! {results, Self},
@@ -151,7 +162,7 @@ value_request_lookup(_Config) ->
     Self = self(),
     meck:new(coop, [passthrough]),
     meck:expect(coop, get_kill_switch, fun(_Coop_Head) -> Self end),
-    Fake_Coop_Head = {coop_head, Self, Self},
+    Fake_Coop_Head = #coop_head{ctl_pid=Self, data_pid=Self},
     Directory_Node = esp_cache:new_directory_node(Fake_Coop_Head),
     ?CTL_MSG({link, _Pids1}) = receive A -> A after 1000 -> timeout end,
     check_directory_empty(Directory_Node, Key),
@@ -197,7 +208,7 @@ insert_value(Directory_Node, Key, Exp_Value) ->
     Self = self(),
 
     %% Create a datum Coop_Node...
-    Value_Node = esp_cache:new_datum_node(Self, Exp_Value),
+    Value_Node = esp_cache:new_datum_node(make_fake_head(), Self, Exp_Value),
     ?CTL_MSG({link, _Pids2}) = receive B -> B after 1000 -> timeout end,
     coop:relay_data(Directory_Node, {new, Key, Value_Node}),
     R1 = make_ref(),
@@ -230,7 +241,7 @@ value_request_add_replace(_Config) ->
     Self = self(),
     meck:new(coop, [passthrough]),
     meck:expect(coop, get_kill_switch, fun(_Coop_Head) -> Self end),
-    Fake_Coop_Head = {coop_head, Self, Self},
+    Fake_Coop_Head = #coop_head{ctl_pid=Self, data_pid=Self},
     Directory_Node = esp_cache:new_directory_node(Fake_Coop_Head),
     ?CTL_MSG({link, _Pids1}) = receive A -> A after 1000 -> timeout end,
     check_directory_empty(Directory_Node, Key1),
@@ -252,17 +263,27 @@ value_request_add_replace(_Config) ->
     [{R3, defined}] = check_worker([]),
     true = coop:is_live(Value_Node),
 
-    %% Try to replace a non-existent key's value...
-    %% Key2 = bar,
-    %% R4 = make_ref(),
-    %% coop:relay_data(Directory_Node, {num_keys, {R4, Self}}),
-    %% R5 = make_ref(),
-    %% coop:relay_data(Directory_Node, {replace, {Key2, {?VALUE, Exp_Value}, {R5, Self}}}),
-    %% R6 = make_ref(),
-    %% coop:relay_data(Directory_Node, {num_keys, {R6, Self}}),
-    %% timer:sleep(50),
-    %% [{R4, 1}, {R5, Exp_Value}, {R6, 2}] = check_worker([]),
-    %% true = coop:is_live(Value_Node),
-
     meck:unload(coop).
     
+
+%%----------------------------------------------------------------------
+%% Complete Co-op testing
+%%----------------------------------------------------------------------
+cache_coop(_Config) ->
+    Cache_Coop = esp_cache:new_cache_coop(5),
+    {Key1, _Key2} = {foo, bar},
+    {Val1, _Val2} = {17, 4},
+
+    %% Try to replace a non-existent key's value...
+    Self = self(),
+    R1 = make_ref(),
+    coop:relay_data(Cache_Coop, {num_keys, {R1, Self}}),
+    R2 = make_ref(),
+    coop:relay_data(Cache_Coop, {add, {Key1, {?VALUE, Val1}, {R2, Self}}}),
+    timer:sleep(50),
+    [{R1, 0}, {R2, Val1}] = check_worker([]),
+    R3 = make_ref(),
+    coop:relay_data(Cache_Coop, {num_keys, {R3, Self}}),
+    timer:sleep(50),
+    [{R3, 1}] = check_worker([]),
+    true = coop:is_live(Cache_Coop).

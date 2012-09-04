@@ -35,19 +35,7 @@
 %% Internal functions for spawned processes
 -export([echo_loop/1, link_loop/0]).
 
-%%----------------------------------------------------------------------
-%% A Co-op Node is a single worker element of a Co-op. Every worker
-%% element exists to accept data, transform it and pass it on.
-%%
-%% There are separate pids internal to a Co-op Node used to:
-%%    1) terminate the entire co-op (kill_switch)
-%%    2) receive control requests (ctl)
-%%    3) execute the transform function (task execs task_fn)
-%%    4) relay trace information (trace)
-%%    5) record log and telemetry data (log)
-%%    6) reflect data flow for user display and analysis (reflect)
-%%----------------------------------------------------------------------
-
+-include("coop.hrl").
 -include("coop_dag.hrl").
 -include("coop_node.hrl").
 
@@ -64,11 +52,11 @@ new(Coop_Head, Kill_Switch, Node_Fn, Init_Fn, Data_Opts) ->
     new(Coop_Head, Kill_Switch, Node_Fn, Init_Fn, Data_Opts, broadcast).
 
 %% Override downstream data distribution.
-new({coop_head, _Head_Ctl_Pid, _Head_Data_Pid} = Coop_Head, Kill_Switch,
+new(#coop_head{ctl_pid=Head_Ctl_Pid, data_pid=Head_Data_Pid} = Coop_Head, Kill_Switch,
     {_Task_Mod, _Task_Fn} = Node_Fn, {_Mod, _Fun, _Args} = Init_Fn,
     Data_Opts, Data_Flow_Method)
 
-  when is_pid(_Head_Ctl_Pid), is_pid(_Head_Data_Pid), is_pid(Kill_Switch),
+  when is_pid(Head_Ctl_Pid), is_pid(Head_Data_Pid), is_pid(Kill_Switch),
        is_atom(_Task_Mod), is_atom(_Task_Fn), is_atom(_Mod), is_atom(_Fun),
        is_list(Data_Opts),
        (        Data_Flow_Method =:= random
@@ -87,7 +75,7 @@ new({coop_head, _Head_Ctl_Pid, _Head_Data_Pid} = Coop_Head, Kill_Switch,
 
     %% Link all component pids to the Kill_Switch pid and return the Ctl and Data pids.
     coop_kill_link_rcv:link_to_kill_switch(Kill_Switch, [Ctl_Pid, Task_Pid, Trace_Pid, Log_Pid, Reflect_Pid]),
-    {coop_node, Ctl_Pid, Task_Pid}.
+    #coop_node{ctl_pid=Ctl_Pid, task_pid=Task_Pid}.
 
 make_data_task_pid(Coop_Head, Node_Fn, Init_Fn, Data_Opts, Data_Flow_Method) ->
     Worker_Set = case Data_Flow_Method of random -> {}; _Other -> queue:new() end,
@@ -146,7 +134,7 @@ node_ctl_remove_trace_fn(Coop_Node, Func, From) ->
 %%----------------------------------------------------------------------
 %% Task process interface...
 %%----------------------------------------------------------------------
-node_task_get_downstream_pids({coop_node, _Node_Ctl_Pid, Node_Task_Pid}) ->
+node_task_get_downstream_pids(#coop_node{task_pid=Node_Task_Pid}) ->
     Ref = make_ref(),
     Node_Task_Pid ! {?DAG_TOKEN, ?CTL_TOKEN, {get_downstream, {Ref, self()}}},
     receive
@@ -154,12 +142,12 @@ node_task_get_downstream_pids({coop_node, _Node_Ctl_Pid, Node_Task_Pid}) ->
     after ?SYNC_RECEIVE_TIME -> timeout
     end.
 
-node_task_add_downstream_pids({coop_node, _Node_Ctl_Pid, Node_Task_Pid}, Pids) when is_list(Pids) ->
+node_task_add_downstream_pids(#coop_node{task_pid=Node_Task_Pid}, Pids) when is_list(Pids) ->
     Node_Task_Pid ! {?DAG_TOKEN, ?CTL_TOKEN, {add_downstream, Pids}},
     ok.
 
 %% Deliver data to a downstream Pid or Coop_Node.
-node_task_deliver_data({coop_node, _Node_Ctl_Pid, Node_Task_Pid}, Data) ->
+node_task_deliver_data(#coop_node{task_pid=Node_Task_Pid}, Data) ->
     Node_Task_Pid ! Data,
     ok;
 node_task_deliver_data(Pid, Data) when is_pid(Pid) ->
@@ -178,7 +166,7 @@ node_task_deliver_data(Pid, Data) when is_pid(Pid) ->
 echo_loop(Type) ->
     receive
         {stop} -> ok;
-        Any -> error_logger:info_msg("~p ~p: ~p~n", [Type, self(), Any])
+        Any -> error_logger:info_msg("~p ~p ~p: ~p~n", [?MODULE, Type, self(), Any])
     end,
     echo_loop(Type).
 
@@ -206,6 +194,6 @@ link_loop() ->
         %%------------------------------------------------------------
 
         _Unknown ->
-            error_logger:error_msg("KILL ~p: Ignoring ~p~n", [self(), _Unknown]),
+            error_logger:error_msg("~p ~p: Ignoring ~p~n", [?MODULE, self(), _Unknown]),
             link_loop()
     end.

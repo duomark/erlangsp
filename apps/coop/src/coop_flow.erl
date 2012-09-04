@@ -14,6 +14,7 @@
 %% Friendly API
 -export([pipeline/1, chain_vertices/2, fanout/3]).
 
+-include("coop.hrl").
 -include("coop_dag.hrl").
 
 

@@ -14,7 +14,7 @@
 %%%    of queued Data messages.
 %%%
 %%%    It is possible to send a data message on the control channel.
-%%%    This serves as a high-priority bypass, but it use should be
+%%%    This serves as a high-priority bypass, but its use should be
 %%%    rare. 
 %%%
 %%%    Excessive use of control messages will cause queueing at the
@@ -23,9 +23,9 @@
 %%%    messages, as well as a lack of data throughput.
 %%%
 %%%    The Root Pid also responds to OTP System messages so it can
-%%%    be suspended, resumed, debugged, traced and managed using all
-%%%    the OTP tools. These are primarily used to restrict data flow
-%%%    when code changes require it, or data in transit is too heavy.
+%%%    be suspended, resumed, debugged, traced and managed using OTP
+%%%    tools. These are primarily used to restrict data flow when code
+%%%    changes require it, or data in transit is too heavy.
 %%%
 %%% @since v0.0.1
 %%% @end
@@ -61,24 +61,9 @@
 %% Internal functions for spawned processes
 -export([echo_loop/1]).
 
-
-%%----------------------------------------------------------------------
-%% A Coop Head is the external interface of a coop graph.
-%% It receives control and data requests and passes them on to
-%% the Coop Node components of the coop graph.
-%%
-%% There are separate pids internal to a Coop Head used to:
-%%    1) terminate the entire coop (kill_switch)
-%%    2) receive control requests (ctl)
-%%    3) forward data requests (data)
-%%    4) one_at_a_time gateway to Coop Body (root)
-%%    4) relay trace information (trace)
-%%    5) record log and telemetry data (log)
-%%    6) reflect data flow for user display and analysis (reflect)
-%%----------------------------------------------------------------------
-
--include("../include/coop_dag.hrl").
--include("../include/coop_head.hrl").
+-include("coop.hrl").
+-include("coop_dag.hrl").
+-include("coop_head.hrl").
 
 -define(CTL_MSG_TIMEOUT,  500).
 -define(SYNC_MSG_TIMEOUT, none).
@@ -106,16 +91,16 @@
 
 -spec ctl_stats(coop_head(), boolean() | get, pid()) -> ok | {ok, list()}.
 
-send_ctl_msg_internal ({coop_head, Head_Ctl_Pid, _Head_Data_Pid}, Msg) -> Head_Ctl_Pid  ! {?DAG_TOKEN, ?CTL_TOKEN,  Msg}, ok.
-send_data_msg_internal({coop_head, _Head_Ctl_Pid, Head_Data_Pid}, Msg) -> Head_Data_Pid ! {?DAG_TOKEN, ?DATA_TOKEN, Msg}, ok.
+send_ctl_msg_internal (#coop_head{ctl_pid=Head_Ctl_Pid}, Msg) -> Head_Ctl_Pid  ! {?DAG_TOKEN, ?CTL_TOKEN,  Msg}, ok.
+send_data_msg_internal(#coop_head{data_pid=Head_Data_Pid}, Msg) -> Head_Data_Pid ! {?DAG_TOKEN, ?DATA_TOKEN, Msg}, ok.
     
 send_ctl_msg(Coop_Head, Msg) -> send_ctl_msg_internal(Coop_Head, Msg).
 send_ctl_msg(Coop_Head, Msg, Flag, From) -> send_ctl_msg_internal(Coop_Head, {Msg, Flag, From}).
 send_ctl_change_timeout(Coop_Head, New_Timeout) -> send_ctl_msg_internal(Coop_Head, {change_timeout, New_Timeout}).
     
 send_data_msg(Coop_Head, Msg) -> send_data_msg_internal(Coop_Head, Msg).
-send_priority_data_msg({coop_head, Head_Ctl_Pid, _Head_Data_Pid}, Msg) -> Head_Ctl_Pid  ! {?DAG_TOKEN, ?DATA_TOKEN, Msg}, ok.
-send_data_change_timeout({coop_head, _Head_Ctl_Pid, Head_Data_Pid}, New_Timeout) ->
+send_priority_data_msg(#coop_head{ctl_pid=Head_Ctl_Pid}, Msg) -> Head_Ctl_Pid  ! {?DAG_TOKEN, ?DATA_TOKEN, Msg}, ok.
+send_data_change_timeout(#coop_head{data_pid=Head_Data_Pid}, New_Timeout) ->
     Head_Data_Pid ! {?DAG_TOKEN, ?CTL_TOKEN, {change_timeout, New_Timeout}},
     ok.
 
@@ -165,7 +150,7 @@ set_root_node({coop_head, _Head_Ctl_Pid, _Head_Data_Pid} = Coop_Head,
 %% Create a new coop_head. A coop_head is represented by a pair of
 %% pids: a control process and a data process.
 %%----------------------------------------------------------------------
--spec new(pid(), coop_node() | none) -> coop_head().
+-spec new(pid(), pid()) -> coop_head().
 
 new(Kill_Switch, Coop_Node)
   when is_pid(Kill_Switch) ->
@@ -185,12 +170,12 @@ new(Kill_Switch, Coop_Node)
     %% Link all pids to the Kill_Switch and return the coop_head.
     Kill_Link_Args = [Ctl_Pid, Data_Pid, Root_Pid, Trace_Pid, Log_Pid, Reflect_Pid],
     coop_kill_link_rcv:link_to_kill_switch(Kill_Switch, Kill_Link_Args),
-    {coop_head, Ctl_Pid, Data_Pid}.
+    #coop_head{ctl_pid=Ctl_Pid, data_pid=Data_Pid}.
 
 
 make_root_pid(none) ->
     proc_lib:spawn(coop_head_root_rcv, sync_pass_thru_loop, [none]);
-make_root_pid({coop_node, _Node_Ctl_Pid, _Node_Data_Pid} = Coop_Node) ->
+make_root_pid(#coop_node{} = Coop_Node) ->
     proc_lib:spawn(coop_head_root_rcv, sync_pass_thru_loop, [Coop_Node]).
 
 make_data_pid(Root_Pid, Timeout) when is_pid(Root_Pid) ->
@@ -215,6 +200,6 @@ make_support_pids() ->
 echo_loop(Type) ->
     receive
         {stop} -> exit(stopped);
-        Any -> error_logger:info_msg("~p ~p: ~p~n", [Type, self(), Any])
+        Any -> error_logger:info_msg("~p ~p ~p: ~p~n", [?MODULE, Type, self(), Any])
     end,
     echo_loop(Type).

@@ -25,9 +25,10 @@
 -export([report_result/0]).
 -export([
          fake_node_ctl/0, fake_node_data/0, fake_coop_node/0,
-         result_node_ctl/0, result_node_data/0, result_coop_node/0
+         result_node_ctl/0, result_node_task/0, result_coop_node/0
         ]).
 
+-include("../../coop/include/coop.hrl").
  
 groups() -> [{ctl_tests, [sequence],
               [
@@ -77,7 +78,7 @@ create_new_coop_head_args(Fn) ->
 
 head_ctl_kill_one_proc(_Config) ->
     Args = [Kill_Switch, _Coop_Node] = create_new_coop_head_args(fake_coop_node),
-    {coop_head, Head_Ctl_Pid, Head_Data_Pid} = apply(?TM, new, Args),
+    #coop_head{ctl_pid=Head_Ctl_Pid, data_pid=Head_Data_Pid} = apply(?TM, new, Args),
     timer:sleep(50),
     [true = is_process_alive(Pid) || Pid <- [Head_Ctl_Pid, Head_Data_Pid]],
     exit(Head_Data_Pid, kill),
@@ -87,9 +88,9 @@ head_ctl_kill_one_proc(_Config) ->
 
 head_ctl_kill_two_proc(_Config) ->
     Args = [Kill_Switch, _Coop_Node] = create_new_coop_head_args(fake_coop_node),
-    {coop_head, Head_Ctl_Pid1, Head_Data_Pid1} = apply(?TM, new, Args),
+    #coop_head{ctl_pid=Head_Ctl_Pid1, data_pid=Head_Data_Pid1} = apply(?TM, new, Args),
     [true = is_process_alive(Pid) || Pid <- [Head_Ctl_Pid1, Head_Data_Pid1]],
-    {coop_head, Head_Ctl_Pid2, Head_Data_Pid2} = apply(?TM, new, Args),
+    #coop_head{ctl_pid=Head_Ctl_Pid2, data_pid=Head_Data_Pid2} = apply(?TM, new, Args),
     [true = is_process_alive(Pid) || Pid <- [Head_Ctl_Pid2, Head_Data_Pid2]],
     exit(Head_Ctl_Pid2, kill),
     timer:sleep(50),
@@ -99,7 +100,7 @@ head_ctl_kill_two_proc(_Config) ->
 
 head_ctl_stop_one_proc(_Config) ->
     Args = [_Kill_Switch, _Coop_Node] = create_new_coop_head_args(fake_coop_node),
-    Coop_Node = {coop_head, Head_Ctl_Pid, Head_Data_Pid} = apply(?TM, new, Args),
+    Coop_Node = #coop_head{ctl_pid=Head_Ctl_Pid, data_pid=Head_Data_Pid} = apply(?TM, new, Args),
     [true = is_process_alive(Pid) || Pid <- [Head_Ctl_Pid, Head_Data_Pid]],
     ?TM:stop(Coop_Node),
     timer:sleep(50),
@@ -112,8 +113,8 @@ head_ctl_stop_one_proc(_Config) ->
 %% Function Tasks
 %%----------------------------------------------------------------------
 result_node_ctl()  -> proc_lib:spawn(?MODULE, report_result, []).
-result_node_data() -> proc_lib:spawn(?MODULE, report_result, []).
-result_coop_node() -> {coop_node, result_node_ctl(), result_node_data()}.
+result_node_task() -> proc_lib:spawn(?MODULE, report_result, []).
+result_coop_node() -> #coop_node{ctl_pid=result_node_ctl(), task_pid=result_node_task()}.
 
 report_result() ->
     report_result([]).
@@ -133,64 +134,64 @@ get_result_data(Pid) ->
     receive Any -> Any after 50 -> timeout end.
 
 start_head() ->
-    Args = [_Kill_Switch, {coop_node, Node_Ctl_Pid, Node_Data_Pid} = Coop_Node]
+    Args = [_Kill_Switch, #coop_node{ctl_pid=Node_Ctl_Pid, task_pid=Node_Task_Pid} = Coop_Node]
         = create_new_coop_head_args(result_coop_node),
-    Coop_Head = {coop_head, Head_Ctl_Pid, Head_Data_Pid} = apply(?TM, new, Args),
+    Coop_Head = #coop_head{ctl_pid=Head_Ctl_Pid, data_pid=Head_Data_Pid} = apply(?TM, new, Args),
     Root_Pid = ?TM:get_root_pid(Coop_Head),
     timer:sleep(50),
     [true = is_process_alive(P) || P <- [Head_Ctl_Pid, Head_Data_Pid,
-                                         Node_Ctl_Pid, Node_Data_Pid, Root_Pid]],
+                                         Node_Ctl_Pid, Node_Task_Pid, Root_Pid]],
     {Coop_Head, Root_Pid, Coop_Node}.
 
 send_ctl_msgs(_Config) ->
-    {{coop_head, Head_Ctl_Pid, Head_Data_Pid} = Coop_Head,
-     Root_Pid, {coop_node, Node_Ctl_Pid, Node_Data_Pid}} = start_head(),
-    Procs = [Head_Ctl_Pid, Head_Data_Pid, Node_Ctl_Pid, Node_Data_Pid, Root_Pid],
+    {#coop_head{ctl_pid=Head_Ctl_Pid, data_pid=Head_Data_Pid} = Coop_Head,
+     Root_Pid, #coop_node{ctl_pid=Node_Ctl_Pid, task_pid=Node_Task_Pid}} = start_head(),
+    Procs = [Head_Ctl_Pid, Head_Data_Pid, Node_Ctl_Pid, Node_Task_Pid, Root_Pid],
     [?TM:send_ctl_msg(Coop_Head, N) || N <- lists:seq(2,4)],
     timer:sleep(50),
     [true = is_process_alive(P) || P <- Procs],
     [2,3,4,none] = [get_result_data(Node_Ctl_Pid) || _N <- lists:seq(1,4)],
-    [none,none,none,none] = [get_result_data(Node_Data_Pid) || _N <- lists:seq(1,4)],
+    [none,none,none,none] = [get_result_data(Node_Task_Pid) || _N <- lists:seq(1,4)],
     ok.
 
 send_data_msgs(_Config) ->
-    {{coop_head, Head_Ctl_Pid, Head_Data_Pid} = Coop_Head,
-     Root_Pid, {coop_node, Node_Ctl_Pid, Node_Data_Pid}} = start_head(),
-    Procs = [Head_Ctl_Pid, Head_Data_Pid, Node_Ctl_Pid, Node_Data_Pid, Root_Pid],
+    {#coop_head{ctl_pid=Head_Ctl_Pid, data_pid=Head_Data_Pid} = Coop_Head,
+     Root_Pid, #coop_node{ctl_pid=Node_Ctl_Pid, task_pid=Node_Task_Pid}} = start_head(),
+    Procs = [Head_Ctl_Pid, Head_Data_Pid, Node_Ctl_Pid, Node_Task_Pid, Root_Pid],
     [?TM:send_data_msg(Coop_Head, N) || N <- lists:seq(5,7)],
     timer:sleep(50),
     [true = is_process_alive(P) || P <- Procs],
     [none,none,none,none] = [get_result_data(Node_Ctl_Pid) || _N <- lists:seq(1,4)],
-    [5,6,7,none] = [get_result_data(Node_Data_Pid) || _N <- lists:seq(1,4)],
+    [5,6,7,none] = [get_result_data(Node_Task_Pid) || _N <- lists:seq(1,4)],
     ok.
 
 sys_suspend(_Config) ->
-    {{coop_head, Head_Ctl_Pid, Head_Data_Pid} = Coop_Head,
-     Root_Pid, {coop_node, Node_Ctl_Pid, Node_Data_Pid}} = start_head(),
-    Procs = [Head_Ctl_Pid, Head_Data_Pid, Node_Ctl_Pid, Node_Data_Pid, Root_Pid],
+    {#coop_head{ctl_pid=Head_Ctl_Pid, data_pid=Head_Data_Pid} = Coop_Head,
+     Root_Pid, #coop_node{ctl_pid=Node_Ctl_Pid, task_pid=Node_Task_Pid}} = start_head(),
+    Procs = [Head_Ctl_Pid, Head_Data_Pid, Node_Ctl_Pid, Node_Task_Pid, Root_Pid],
     [?TM:send_data_msg(Coop_Head, N) || N <- lists:seq(5,7)],
     timer:sleep(50),
     [true = is_process_alive(P) || P <- Procs],
-    [5,6,7,none] = [get_result_data(Node_Data_Pid) || _N <- lists:seq(1,4)],
+    [5,6,7,none] = [get_result_data(Node_Task_Pid) || _N <- lists:seq(1,4)],
     
     %% Suspend message handling and get no result...
     ?TM:suspend_root(Coop_Head),
     timer:sleep(50),
     [?TM:send_data_msg(Coop_Head, N) || N <- lists:seq(8,10)],
     [true = is_process_alive(P) || P <- Procs],
-    [none,none,none,none] = [get_result_data(Node_Data_Pid) || _N <- lists:seq(1,4)],
+    [none,none,none,none] = [get_result_data(Node_Task_Pid) || _N <- lists:seq(1,4)],
 
     %% Resume and result appears.
     ?TM:resume_root(Coop_Head),
     timer:sleep(50),
     [true = is_process_alive(P) || P <- Procs],
-    [8,9,10,none] = [get_result_data(Node_Data_Pid) || _N <- lists:seq(1,4)],
+    [8,9,10,none] = [get_result_data(Node_Task_Pid) || _N <- lists:seq(1,4)],
     ok.
 
 sys_format(_Config) ->
-    {{coop_head, Head_Ctl_Pid, Head_Data_Pid} = _Coop_Head,
-     Root_Pid, {coop_node, Node_Ctl_Pid, Node_Data_Pid}} = start_head(),
-    Procs = [Head_Ctl_Pid, Head_Data_Pid, Node_Ctl_Pid, Node_Data_Pid, Root_Pid],
+    {#coop_head{ctl_pid=Head_Ctl_Pid, data_pid=Head_Data_Pid} = _Coop_Head,
+     Root_Pid, #coop_node{ctl_pid=Node_Ctl_Pid, task_pid=Node_Task_Pid}} = start_head(),
+    Procs = [Head_Ctl_Pid, Head_Data_Pid, Node_Ctl_Pid, Node_Task_Pid, Root_Pid],
 
     %% Get the custom status information...
     Custom_Running_Fmt = get_custom_fmt(sys:get_status(Root_Pid)),
@@ -226,9 +227,9 @@ get_custom_fmt(Status) -> lists:nth(5, element(4, Status)).
 %%      end || _N <- lists:seq(1,N)].
     
 sys_statistics(_Config) ->
-    {{coop_head, Head_Ctl_Pid, Head_Data_Pid} = Coop_Head,
-     Root_Pid, {coop_node, Node_Ctl_Pid, Node_Data_Pid}} = start_head(),
-    Procs = [Head_Ctl_Pid, Head_Data_Pid, Node_Ctl_Pid, Node_Data_Pid, Root_Pid],
+    {#coop_head{ctl_pid=Head_Ctl_Pid, data_pid=Head_Data_Pid} = Coop_Head,
+     Root_Pid, #coop_node{ctl_pid=Node_Ctl_Pid, task_pid=Node_Task_Pid}} = start_head(),
+    Procs = [Head_Ctl_Pid, Head_Data_Pid, Node_Ctl_Pid, Node_Task_Pid, Root_Pid],
 
     ok = ?TM:ctl_stats(Coop_Head, true, self()),
     [true = is_process_alive(P) || P <- Procs],
@@ -245,9 +246,9 @@ sys_statistics(_Config) ->
     ok.
 
 sys_log(_Config) ->
-    {{coop_head, Head_Ctl_Pid, Head_Data_Pid} = Coop_Head,
-     Root_Pid, {coop_node, Node_Ctl_Pid, Node_Data_Pid}} = start_head(),
-    Procs = [Head_Ctl_Pid, Head_Data_Pid, Node_Ctl_Pid, Node_Data_Pid, Root_Pid],
+    {#coop_head{ctl_pid=Head_Ctl_Pid, data_pid=Head_Data_Pid} = Coop_Head,
+     Root_Pid, #coop_node{ctl_pid=Node_Ctl_Pid, task_pid=Node_Task_Pid}} = start_head(),
+    Procs = [Head_Ctl_Pid, Head_Data_Pid, Node_Ctl_Pid, Node_Task_Pid, Root_Pid],
 
     %% ok = ?TM:ctl_log_to_file(Coop_Head, "./coop.dump", self())
     ok = ?TM:ctl_log(Coop_Head, true, self()),
@@ -265,7 +266,7 @@ sys_log(_Config) ->
     ok.
 
 %% sys_install(_Config) ->
-%%     Coop_Node = {coop_node, _Node_Ctl_Pid, Node_Task_Pid} = setup_no_downstream(),
+%%     Coop_Node = #coop_node{task_pid=Node_Task_Pid} = setup_no_downstream(),
 %%     Pid = spawn_link(fun() ->
 %%                              %% Trace results...
 %%                              receive {15, 30} -> ok;

@@ -14,6 +14,7 @@
 %% Graph API
 -export([node_ctl_loop/7]).
 
+-include("coop.hrl").
 -include("coop_dag.hrl").
 -include("coop_node.hrl").
 

@@ -27,7 +27,8 @@
          format_status/2, debug_coop/3
         ]).
 
--include("../include/coop_dag.hrl").
+-include("coop.hrl").
+-include("coop_dag.hrl").
 
 
 -spec sync_pass_thru_loop(coop_node() | none) -> no_return().
@@ -61,7 +62,7 @@ sync_pass_thru_loop(none, Debug_Opts) ->
     end;
 
 %% Normally functioning node, when a Root Coop_Node is connected.
-sync_pass_thru_loop({coop_node, Node_Ctl_Pid, Node_Task_Pid} = Coop_Root_Node, Debug_Opts) ->
+sync_pass_thru_loop(#coop_node{ctl_pid=Node_Ctl_Pid, task_pid=Node_Task_Pid} = Coop_Root_Node, Debug_Opts) ->
     receive
         %% System messages for compatibility with OTP...
         {'EXIT', _Parent, Reason} -> exit(Reason);

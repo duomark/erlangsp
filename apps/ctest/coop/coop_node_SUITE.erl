@@ -2,6 +2,7 @@
 
 -include_lib("../../erlangsp/include/license_and_copyright.hrl").
 -include_lib("common_test/include/ct.hrl").
+-include("../../coop/include/coop.hrl").
 -include("../../coop/include/coop_dag.hrl").
 
 %% Suite functions
@@ -81,7 +82,7 @@ create_new_coop_node_args(Dist_Type) ->
 
 node_ctl_kill_one_proc(_Config) ->
     Args = [_Coop_Head, Kill_Switch, _Node_Fn, _Init_Fn, _Opts] = create_new_coop_node_args(),
-    {coop_node, Node_Ctl_Pid, Node_Task_Pid} = apply(?TM, new, Args),
+    #coop_node{ctl_pid=Node_Ctl_Pid, task_pid=Node_Task_Pid} = apply(?TM, new, Args),
     true = is_process_alive(Node_Ctl_Pid),
     true = is_process_alive(Node_Task_Pid),
     exit(Node_Task_Pid, kill),
@@ -92,10 +93,10 @@ node_ctl_kill_one_proc(_Config) ->
 
 node_ctl_kill_two_proc(_Config) ->
     Args = [_Coop_Head, Kill_Switch, _Node_Fn, _Init_Fn, _Opts] = create_new_coop_node_args(),
-    {coop_node, Node_Ctl_Pid1, Node_Task_Pid1} = apply(?TM, new, Args),
+    #coop_node{ctl_pid=Node_Ctl_Pid1, task_pid=Node_Task_Pid1} = apply(?TM, new, Args),
     true = is_process_alive(Node_Ctl_Pid1),
     true = is_process_alive(Node_Task_Pid1),
-    {coop_node, Node_Ctl_Pid2, Node_Task_Pid2} = apply(?TM, new, Args),
+    #coop_node{ctl_pid=Node_Ctl_Pid2, task_pid=Node_Task_Pid2} = apply(?TM, new, Args),
     true = is_process_alive(Node_Ctl_Pid2),
     true = is_process_alive(Node_Task_Pid2),
     exit(Node_Ctl_Pid2, kill),
@@ -108,7 +109,7 @@ node_ctl_kill_two_proc(_Config) ->
 
 node_ctl_stop_one_proc(_Config) ->
     Args = [_Coop_Head, Kill_Switch, _Node_Fn, _Init_Fn, _Opts] = create_new_coop_node_args(),
-    Coop_Node = {coop_node, Node_Ctl_Pid, Node_Task_Pid} = apply(?TM, new, Args),
+    Coop_Node = #coop_node{ctl_pid=Node_Ctl_Pid, task_pid=Node_Task_Pid} = apply(?TM, new, Args),
     true = is_process_alive(Node_Ctl_Pid),
     true = is_process_alive(Node_Task_Pid),
     ?TM:node_ctl_stop(Coop_Node),
@@ -150,7 +151,7 @@ setup_no_downstream(Dist_Type) ->
     Coop_Node.
     
 task_compute_one(_Config) ->
-    Coop_Node = {coop_node, _Node_Ctl_Pid, Node_Task_Pid} = setup_no_downstream(),
+    Coop_Node = #coop_node{task_pid=Node_Task_Pid} = setup_no_downstream(),
     
     ?TM:node_task_add_downstream_pids(Coop_Node, []),
     [] = ?TM:node_task_get_downstream_pids(Coop_Node),
@@ -163,7 +164,7 @@ task_compute_one(_Config) ->
     15 = receive Data -> Data end.
 
 task_compute_three_round_robin(_Config) ->
-    Coop_Node = {coop_node, _Node_Ctl_Pid, Node_Task_Pid} = setup_no_downstream(round_robin),
+    Coop_Node = #coop_node{task_pid=Node_Task_Pid} = setup_no_downstream(round_robin),
     Receivers = [A,B,C] = [proc_lib:spawn_link(?MODULE, report_result, [[]])
                            || _N <- lists:seq(1,3)],
     ?TM:node_task_add_downstream_pids(Coop_Node, [A]),
@@ -194,7 +195,7 @@ task_compute_three_round_robin(_Config) ->
     [none, 21, 18] = [get_result_data(Pid) || Pid <- Receivers].
 
 task_compute_three_broadcast(_Config) ->
-    Coop_Node = {coop_node, _Node_Ctl_Pid, Node_Task_Pid} = setup_no_downstream(broadcast),
+    Coop_Node = #coop_node{task_pid=Node_Task_Pid} = setup_no_downstream(broadcast),
     Receivers = [A,B,C] = [proc_lib:spawn_link(?MODULE, report_result, [[]])
                            || _N <- lists:seq(1,3)],
     ?TM:node_task_add_downstream_pids(Coop_Node, [A]),
@@ -212,7 +213,7 @@ task_compute_three_broadcast(_Config) ->
     [18, 18, 18] = [get_result_data(Pid) || Pid <- Receivers].
 
 task_compute_random(_Config) ->
-    Coop_Node = {coop_node, _Node_Ctl_Pid, Node_Task_Pid} = setup_no_downstream(random),
+    Coop_Node = #coop_node{task_pid=Node_Task_Pid} = setup_no_downstream(random),
     Receivers = [proc_lib:spawn_link(?MODULE, report_result, [[]])
                  || _N <- lists:seq(1,5)],
     ?TM:node_task_add_downstream_pids(Coop_Node, Receivers),
@@ -244,7 +245,7 @@ task_compute_random(_Config) ->
     ets:delete(Ets_Name).
 
 sys_suspend(_Config) ->
-    Coop_Node = {coop_node, _Node_Ctl_Pid, Node_Task_Pid} = setup_no_downstream(),
+    Coop_Node = #coop_node{task_pid=Node_Task_Pid} = setup_no_downstream(),
     Receiver = [self()],
     ?TM:node_task_add_downstream_pids(Coop_Node, Receiver),
     Receiver = ?TM:node_task_get_downstream_pids(Coop_Node),
@@ -265,7 +266,7 @@ sys_suspend(_Config) ->
     15 = receive Data3 -> Data3 after 100 -> 0 end.
 
 sys_format(_Config) ->
-    Coop_Node = {coop_node, _Node_Ctl_Pid, Node_Task_Pid} = setup_no_downstream(random),
+    Coop_Node = #coop_node{task_pid=Node_Task_Pid} = setup_no_downstream(random),
 
     %% Get the custom status information...
     Custom_Running_Fmt = get_custom_fmt(sys:get_status(Node_Task_Pid)),
@@ -299,7 +300,7 @@ sys_format(_Config) ->
 
 get_custom_fmt(Status) -> lists:nth(5, element(4, Status)).
 
-send_data(N, {coop_node, _Node_Ctl_Pid, Node_Task_Pid} = Coop_Node) ->
+send_data(N, #coop_node{task_pid=Node_Task_Pid} = Coop_Node) ->
     Receiver = [self()],
     ?TM:node_task_add_downstream_pids(Coop_Node, Receiver),
     Receiver = ?TM:node_task_get_downstream_pids(Coop_Node),
@@ -336,7 +337,7 @@ sys_log(_Config) ->
     %% ok = ?TM:node_ctl_log_to_file(Coop_Node, false, self()).
 
 sys_install(_Config) ->
-    Coop_Node = {coop_node, _Node_Ctl_Pid, Node_Task_Pid} = setup_no_downstream(round_robin),
+    Coop_Node = #coop_node{task_pid=Node_Task_Pid} = setup_no_downstream(round_robin),
     Pid = spawn_link(fun() ->
                              %% Trace results...
                              receive
@@ -364,7 +365,7 @@ sys_install(_Config) ->
             ({Ins, Outs, Count}, {in, {get_downstream, _Id}}, {round_robin, #coop_node_options{}, {}}) ->
                 {Ins, Outs, Count};
             (_State, Unknown, _Extra) ->
-                error_logger:info_msg("~p ~p ~p~n", [_State, Unknown, _Extra]),
+                error_logger:info_msg("~p ~p ~p ~p~n", [?MODULE, _State, Unknown, _Extra]),
                 Pid ! {unknown_msg_rcvd, Unknown}
         end,
     ok = ?TM:node_ctl_install_trace_fn(Coop_Node, {F, {0,0,0}}, self()),

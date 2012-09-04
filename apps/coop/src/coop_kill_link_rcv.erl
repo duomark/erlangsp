@@ -14,7 +14,7 @@
 %% Graph API
 -export([make_kill_switch/0, link_to_kill_switch/2, link_loop/0]).
 
--include("../include/coop_dag.hrl").
+-include("coop_dag.hrl").
 
 -spec make_kill_switch() -> pid().
 make_kill_switch() -> proc_lib:spawn(?MODULE, link_loop, []).
@@ -43,6 +43,6 @@ link_loop() ->
         %%------------------------------------------------------------
 
         _Unknown ->
-            error_logger:error_msg("KILL ~p: Ignoring ~p~n", [self(), _Unknown]),
+            error_logger:error_msg("~p ~p: Ignoring ~p~n", [?MODULE, self(), _Unknown]),
             link_loop()
     end.

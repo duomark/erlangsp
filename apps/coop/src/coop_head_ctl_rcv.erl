@@ -20,8 +20,9 @@
          format_status/2, debug_coop/3
         ]).
 
--include("../include/coop_dag.hrl").
--include("../include/coop_head.hrl").
+-include("coop.hrl").
+-include("coop_dag.hrl").
+-include("coop_head.hrl").
 
 %% Exit, initialize, timeout changes and getting the root_pid don't need root_pid involvement...
 msg_loop(State, Root_Pid, Timeout) ->

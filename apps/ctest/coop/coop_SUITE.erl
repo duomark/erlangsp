@@ -2,6 +2,7 @@
 
 -include("../../erlangsp/include/license_and_copyright.hrl").
 -include_lib("common_test/include/ct.hrl").
+-include("../../coop/include/coop.hrl").
 -include("../../coop/include/coop_dag.hrl").
 
 %% Suite functions
