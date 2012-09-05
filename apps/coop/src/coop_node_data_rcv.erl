@@ -88,10 +88,14 @@ relay_data(Coop_Head, Debug_Opts, Node_Fn, Node_State, Data_Opts, Any_Data_Flow_
 relay_data(Coop_Head, Debug_Opts, {Module, Function} = _Node_Fn, Node_State,
            #coop_node_options{access_coop_head=ACH} = Data_Opts, broadcast, Data, Worker_Set) ->
     {New_Node_State, Fn_Result} = call_task_fn(Module, Function, Node_State, Data, ACH, Coop_Head),
-    New_Opts = lists:foldl(fun(To, Opts) ->
-                                   coop:relay_data(To, Fn_Result),
-                                   sys:handle_debug(Opts, fun debug_coop/3, {broadcast, Data_Opts, New_Node_State}, {out, Fn_Result, To})
-                           end, Debug_Opts, queue:to_list(Worker_Set)),  %% TODO: is this expensive?!
+    New_Opts = case Fn_Result of
+                   ?COOP_NOOP -> Debug_Opts;
+                   Live_Data  -> lists:foldl(fun(To, Opts) ->
+                                                     coop:relay_data(To, Live_Data),
+                                                     Debug_Args = {broadcast, Data_Opts, New_Node_State},
+                                                     sys:handle_debug(Opts, fun debug_coop/3, Debug_Args, {out, Live_Data, To})
+                                             end, Debug_Opts, queue:to_list(Worker_Set))  %% TODO: is this expensive?!
+               end,
     {New_Opts, Worker_Set, New_Node_State};
 
 %% Relay data with random or round_robin has to choose a single destination.
@@ -103,8 +107,12 @@ relay_data(Coop_Head, Debug_Opts, Node_Fn, Node_State, Data_Opts, Single_Data_Fl
 notify_debug_and_return(Coop_Head, Debug_Opts, {Module, Function}, Node_State,
                         #coop_node_options{access_coop_head=ACH} = Data_Opts, Data_Flow_Method, Data, Worker_Set, Pid) ->
     {New_Node_State, Fn_Result} = call_task_fn(Module, Function, Node_State, Data, ACH, Coop_Head),
-    coop:relay_data(Pid, Fn_Result),
-    New_Opts = sys:handle_debug(Debug_Opts, fun debug_coop/3, {Data_Flow_Method, Data_Opts, New_Node_State}, {out, Fn_Result, Pid}),
+    New_Opts = case Fn_Result of
+                   ?COOP_NOOP -> Debug_Opts;
+                   Live_Data  -> coop:relay_data(Pid, Live_Data),
+                                 Debug_Args = {Data_Flow_Method, Data_Opts, New_Node_State},
+                                 sys:handle_debug(Debug_Opts, fun debug_coop/3, Debug_Args, {out, Live_Data, Pid})
+    end,
     {New_Opts, Worker_Set, New_Node_State}.
 
 %% Choose a worker randomly without changing the Worker_Set...

@@ -88,7 +88,7 @@ new_cache_coop(Num_Workers) ->
                                          round_robin),
 
     Workers = [coop:make_dag_node(list_to_atom("worker-" ++ integer_to_list(N)),
-                                  ?COOP_INIT_FN(init_mfa_worker, []),
+                                  ?COOP_INIT_FN(init_mfa_worker, {}),
                                   ?COOP_TASK_FN(make_new_datum),
                                   [access_coop_head]
                                  )
@@ -117,12 +117,12 @@ new_cache_coop(Num_Workers) ->
 %% -type stats_cmd() :: num_keys.
 
 -spec value_request({}, {change_cmd(), change_request()}) -> no_return().
--spec change_value ({}, {change_cmd(), change_request()}, coop_proc() | undefined) -> {{}, noop} | {{}, {add, change_request()}}.
--spec return_value ({}, {fetch_cmd(), lookup_request() | fep_request()}, coop_proc() | undefined) -> {{}, noop}.
+-spec change_value ({}, {change_cmd(), change_request()}, coop_proc() | undefined) -> {{}, ?COOP_NOOP} | {{}, {add, change_request()}}.
+-spec return_value ({}, {fetch_cmd(), lookup_request() | fep_request()}, coop_proc() | undefined) -> {{}, ?COOP_NOOP}.
 
 %% Create a new directory Coop_Node.
 new_directory_node(Coop_Head) ->
-    Kill_Switch = coop:get_kill_switch(Coop_Head),
+    Kill_Switch = coop_head:get_kill_switch(Coop_Head),
     coop_node:new(Coop_Head, Kill_Switch, ?COOP_TASK_FN(value_request), ?COOP_INIT_FN(init_directory, {}), []).
 
 %% No state needed.
@@ -141,72 +141,68 @@ value_request(State, {lookup,        {Key, _Rcvr}        } = Req) -> return_valu
 value_request(State, {num_keys, {Ref, Rcvr}}) ->
     %% 2 entries for each key and proc_lib added '$ancestors' and '$initial_call'
     coop:relay_data(Rcvr, {Ref, (length(get()) - 2) div 2}),
-    {State, noop};
+    {State, ?COOP_NOOP};
 
 %% Expiration of process removes all references to it in process dictionary.
 %%  Key => Coop_Node  +  {Key, Coop_Node} => Node_Data_Pid (the monitored Pid that went down)
 value_request(State, {'DOWN', _Ref, process, Pid, _Reason}) ->
     [begin erase(Key), erase(Coop_Key) end || {Key, _Coop_Node} = Coop_Key <- get_keys(Pid)],
-    {State, noop};
+    {State, ?COOP_NOOP};
 
 %% New dynamically created Coop_Nodes are monitored and placed in the process dictionary.
 value_request(State, {new, Key, #coop_node{task_pid=Node_Task_Pid} = Coop_Node}) ->
     erlang:monitor(process, Node_Task_Pid),
     put({Key, Coop_Node}, Node_Task_Pid),
     put(Key, Coop_Node),
-    {State, noop}.
+    {State, ?COOP_NOOP}.
 
 
 %% Terminate the Coop_Node containing the cached value if there is one...
 change_value(State, {remove, {_Key, {Ref, Requester}}}, undefined) ->
     coop:relay_data(Requester, {Ref, undefined}),
-    {State, noop};
+    {State, ?COOP_NOOP};
 change_value(State, {remove, {Key, {_Ref, _Rqstr} = Requester}}, Coop_Node) ->
     erase(Key),
     erase({Key, Coop_Node}),
     coop:relay_data(Coop_Node, {expire, Requester}),
-    {State, noop};
+    {State, ?COOP_NOOP};
 
 %% Update the Coop_Node containing the cached value...
 change_value(State, {replace, {_Key, _Chg_Type,    {_Ref, _Rqstr}}  = New_Value }, undefined) -> value_request(State, {add, New_Value});
-change_value(State, {replace, {_Key, {?VALUE, V},  {_Ref, _Rqstr}   = Requester}}, Coop_Node) -> coop:relay_data(Coop_Node, {replace, V, Requester}), {State, noop};
+change_value(State, {replace, {_Key, {?VALUE, V},  {_Ref, _Rqstr}   = Requester}}, Coop_Node) -> coop:relay_data(Coop_Node, {replace, V, Requester}), {State, ?COOP_NOOP};
 %% But use the downstream worker pool if M:F(A) must be executed to get the value to cache...
 change_value(State, {replace, {_Key, {?MFA, _MFA}, {_Ref, _Rqstr}} = Request},     Coop_Node) -> {State, {replace, Request, Coop_Node}};
 
 %% Create a new dynamic Coop_Node containing the cached value using the downstream worker pool.
-change_value(State, {add, {_Key, _Chg_Type, {_Ref, _Rqstr}}} = Request, undefined) ->
-    error_logger:info_msg("Add: ~p ~p~n", [State, Request]),
- {State, Request};  % Request is passed to a worker.
-change_value(State, {add, {_Key, _Chg_Type, {Ref, Requester}}},        _Coop_Node) -> coop:relay_data(Requester, {Ref, defined}), {State, noop}.
+change_value(State, {add, {_Key, _Chg_Type, {_Ref, _Rqstr}}} = Request, undefined) -> {State, Request};  % Request is passed to a worker.
+change_value(State, {add, {_Key, _Chg_Type, {Ref, Requester}}},        _Coop_Node) -> coop:relay_data(Requester, {Ref, defined}), {State, ?COOP_NOOP}.
 
 
 %% Send the cached value to the requester.
-return_value(State, {lookup,        {_Key, {Ref, Requester}}          }, undefined) -> coop:relay_data(Requester, {Ref, undefined}),       {State, noop};
-return_value(State, {_Any_Type,     {_Key, {_Ref, _Rqstr} = Requester}}, Coop_Node) -> coop:relay_data(Coop_Node, {get_value, Requester}), {State, noop}.
+return_value(State, {lookup,        {_Key, {Ref, Requester}}          }, undefined) -> coop:relay_data(Requester, {Ref, undefined}),       {State, ?COOP_NOOP};
+return_value(State, {_Any_Type,     {_Key, {_Ref, _Rqstr} = Requester}}, Coop_Node) -> coop:relay_data(Coop_Node, {get_value, Requester}), {State, ?COOP_NOOP}.
 
 
 %%========================= M:F(A) Worker =================================
 
 %% Create a new worker Coop_Node.
 new_worker_node(Coop_Head) ->
-    Kill_Switch = coop:get_kill_switch(Coop_Head),
+    Kill_Switch = coop_head:get_kill_switch(Coop_Head),
     coop_node:new(Coop_Head, Kill_Switch, ?COOP_TASK_FN(make_new_datum), ?COOP_INIT_FN(init_mfa_worker, {}), [access_coop_head]).
 
 %% Kill_Switch is kept as State to spawn dynamic Coop_Nodes (Coop_Head is added as a function argument via Data Options)
-init_mfa_worker({Coop_Head, {}}) -> coop:get_kill_switch(Coop_Head).
+init_mfa_worker({Coop_Head, {}}) -> coop_head:get_kill_switch(Coop_Head).
 
 
 %% Compute the replacement value and forward to the existing Coop_Node...
 make_new_datum(_Coop_Head, Kill_Switch, {replace, {_Key, {?MFA, {Mod, Fun, Args}}, {_Ref, _Rqstr} = Requester}, Coop_Node}) ->
     %% Directory already knows about this datum, using worker for potentially long running M:F(A)
     coop:relay_data(Coop_Node, {replace, Mod:Fun(Args), Requester}),
-    {Kill_Switch, noop};
+    {Kill_Switch, ?COOP_NOOP};
 
 %% Create a new Coop_Node initialized with the value to cache, notifying the Coop_Head directory.
 make_new_datum(Coop_Head, Kill_Switch, {add, {Key, {?VALUE, V},  {_Ref, _Rqstr} = Requester}}) ->
-%%    error_logger:info_msg("Datum: ~p ~p~n", [V, Coop_Head]),
     New_Coop_Node = new_datum_node(Coop_Head, Kill_Switch, V),
-%%    error_logger:info_msg("Datum2: ~p ~p~n", [V, Coop_Head]),
     relay_new_datum(Coop_Head, Key, New_Coop_Node, Requester, Kill_Switch);
 make_new_datum(Coop_Head, Kill_Switch, {add, {Key, {?MFA, {Mod, Fun, Args}}, {_Ref, _Rqstr} = Requester}}) ->
     New_Coop_Node = new_datum_node(Coop_Head, Kill_Switch, Mod:Fun(Args)),
@@ -215,8 +211,7 @@ make_new_datum(Coop_Head, Kill_Switch, {add, {Key, {?MFA, {Mod, Fun, Args}}, {_R
 relay_new_datum(Coop_Head, Key, New_Coop_Node, Requester, Kill_Switch) ->
     coop:relay_high_priority_data(Coop_Head, {new, Key, New_Coop_Node}),
     coop:relay_data(New_Coop_Node, {get_value, Requester}),
-%%    error_logger:info_msg("Datum: ~p => ~p~n", [Key, New_Coop_Node]),
-    {Kill_Switch, noop}.
+    {Kill_Switch, ?COOP_NOOP}.
 
 
 %%========================= Datum Node ====================================
@@ -231,5 +226,5 @@ init_datum(V) -> V.
 
 %% Cached datum is relayed to requester, no downstream listeners.
 manage_datum( Datum, {expire,               {Ref, Requester}} ) -> coop:relay_data(Requester, {Ref, Datum}), exit(normal);
-manage_datum( Datum, {get_value,            {Ref, Requester}} ) -> coop:relay_data(Requester, {Ref, Datum}), {Datum, noop};
-manage_datum(_Datum, {replace,   New_Value, {Ref, Requester}} ) -> coop:relay_data(Requester, {Ref, New_Value}), {New_Value, noop}.
+manage_datum( Datum, {get_value,            {Ref, Requester}} ) -> coop:relay_data(Requester, {Ref, Datum}), {Datum, ?COOP_NOOP};
+manage_datum(_Datum, {replace,   New_Value, {Ref, Requester}} ) -> coop:relay_data(Requester, {Ref, New_Value}), {New_Value, ?COOP_NOOP}.

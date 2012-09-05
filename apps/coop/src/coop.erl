@@ -46,7 +46,7 @@ new_pipeline([#coop_dag_node{} | _More] = Node_Fns, Receiver) ->
     Head_Kill_Switch = coop_kill_link_rcv:make_kill_switch(),
     Coop_Head = coop_head:new(Head_Kill_Switch, none),
     Body_Kill_Switch = coop_kill_link_rcv:make_kill_switch(),
-    {Coop_Root_Node, Pipeline_Graph, Template_Graph}
+    {Coop_Root_Node, Template_Graph, Pipeline_Graph}
         = pipeline(Coop_Head, Body_Kill_Switch, Node_Fns, Receiver),
     Coop_Instance = make_coop_instance(1, Coop_Head, Coop_Root_Node, Pipeline_Graph),
     finish_new_coop(Coop_Instance, Head_Kill_Switch, Body_Kill_Switch, Template_Graph).
@@ -55,7 +55,7 @@ new_fanout(#coop_dag_node{} = Router_Fn, [#coop_dag_node{} | _More] = Workers, R
     Head_Kill_Switch = coop_kill_link_rcv:make_kill_switch(),
     Coop_Head = coop_head:new(Head_Kill_Switch, none),
     Body_Kill_Switch = coop_kill_link_rcv:make_kill_switch(),
-    {Coop_Root_Node, Fanout_Graph, Template_Graph}
+    {Coop_Root_Node, Template_Graph, Fanout_Graph}
         = fanout(Coop_Head, Body_Kill_Switch, Router_Fn, Workers, Receiver),
     Coop_Instance = make_coop_instance(1, Coop_Head, Coop_Root_Node, Fanout_Graph),
     finish_new_coop(Coop_Instance, Head_Kill_Switch, Body_Kill_Switch, Template_Graph).
@@ -113,11 +113,19 @@ get_body_kill_switch(Coop_Node) ->
 %%----------------------------------------------------------------------
 %% Check if a Coop_Head, Coop_Node or raw Pid is alive.
 %%----------------------------------------------------------------------
+is_live(none) -> false;
 is_live(Pid) when is_pid(Pid) -> is_process_alive(Pid);
 is_live(#coop_head{ctl_pid=Ctl_Pid, data_pid=Data_Pid}) ->
     is_process_alive(Ctl_Pid) andalso is_process_alive(Data_Pid);
 is_live(#coop_node{ctl_pid=Ctl_Pid, task_pid=Task_Pid}) ->
-    is_process_alive(Ctl_Pid) andalso is_process_alive(Task_Pid).
+    is_process_alive(Ctl_Pid) andalso is_process_alive(Task_Pid);
+is_live(#coop_instance{head=Coop_Head}) ->
+    is_live(Coop_Head);
+is_live(#coop{instances=#coop_instance{head=Coop_Head}}) ->
+    is_live(Coop_Head);
+is_live(#coop{instances=Ets_Table}) ->
+    lists:all([is_live(Inst) || Inst <- ets:tab2list(Ets_Table)]).
+
     
 
 %%----------------------------------------------------------------------
@@ -177,13 +185,13 @@ pipeline(Coop_Head, Kill_Switch, Pipeline_Template_Graph, Left_To_Right_Stages, 
     %% Return the first coop_node, template graph and live coop_node graph.
     {First_Stage_Coop_Node, Pipeline_Template_Graph, Coops_Graph}.
 
-spawn_pipeline_stage(Coop_Head, Kill_Switch, Coops,
+spawn_pipeline_stage(Coop_Head, Kill_Switch, Graph,
                      {Name, #coop_node_fn{init=Init_Fn, task=Task_Fn, options=Opts}},
                      {Receiver, Downstream_Vertex_Name}) ->
     Coop_Node = coop_node:new(Coop_Head, Kill_Switch, Task_Fn, Init_Fn, Opts),  % Defaults to broadcast out
     coop_node:node_task_add_downstream_pids(Coop_Node, [Receiver]),             % And just 1 receiver
-    digraph:add_vertex(Coops, Name, Coop_Node),
-    digraph:add_edge(Coops, Name, Downstream_Vertex_Name),
+    digraph:add_vertex(Graph, Name, Coop_Node),
+    digraph:add_edge(Graph, Name, Downstream_Vertex_Name),
     {Coop_Node, Name}.
     
 
@@ -207,17 +215,17 @@ fanout(Inbound, Coop_Head ,Kill_Switch, Fanout_Template_Graph) ->
                                  digraph:add_vertex(Coops_Graph, outbound, Receiver),
                                  {true, Receiver}
                          end,
-    Worker_Nodes = [add_fanout_worker_node(Coop_Head, Kill_Switch, Has_Fan_In, Rcvr, Fanout_Template_Graph, Vertex_Name, Coops_Graph)
-                    || Vertex_Name <- digraph:out_neighbours(Fanout_Template_Graph, inbound)],
+    Worker_Nodes = [add_fanout_worker_node(Coop_Head, Kill_Switch, Inbound, Has_Fan_In, Rcvr, Fanout_Template_Graph, Vertex_Name, Coops_Graph)
+                    || Vertex_Name <- digraph:out_neighbours(Fanout_Template_Graph, Inbound)],
     coop_node:node_task_add_downstream_pids(Inbound_Node, Worker_Nodes),
     {Inbound_Node, Fanout_Template_Graph, Coops_Graph}.
 
-add_fanout_worker_node(Coop_Head, Kill_Switch, Has_Fan_In, Receiver, Template_Graph, Vertex_Name, Coops_Graph) ->
+add_fanout_worker_node(Coop_Head, Kill_Switch, Inbound, Has_Fan_In, Receiver, Template_Graph, Vertex_Name, Coops_Graph) ->
     {Vertex_Name, #coop_node_fn{init=Init_Fn, task=Task_Fn, options=Opts}}
         = digraph:vertex(Template_Graph, Vertex_Name),
     Coop_Node = coop_node:new(Coop_Head, Kill_Switch, Task_Fn, Init_Fn, Opts),  % Defaults to broadcast
     digraph:add_vertex(Coops_Graph, Vertex_Name, Coop_Node),
-    digraph:add_edge(Coops_Graph, inbound, Vertex_Name),
+    digraph:add_edge(Coops_Graph, Inbound, Vertex_Name),
     Has_Fan_In andalso begin
                            digraph:add_edge(Coops_Graph, Vertex_Name, outbound),
                            coop_node:node_task_add_downstream_pids(Coop_Node, [Receiver])

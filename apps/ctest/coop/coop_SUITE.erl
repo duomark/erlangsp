@@ -128,27 +128,27 @@ fanout_failure(_Config) ->
     catch error:function_clause -> ok
     end.
 
-check_fanout_vertex(Graph, #coop_dag_node{label=Label}, inbound = Name, InDegree, OutDegree) ->
-    {Name, Label} = digraph:vertex(Graph, Name),
-    InDegree   = digraph:in_degree(Graph, Name),
-    OutDegree  = digraph:out_degree(Graph, Name),
-    InDegree   = length(digraph:in_neighbours(Graph, Name)),
-    OutDegree  = length([V || V <- digraph:out_neighbours(Graph, Name)]);
-check_fanout_vertex(Graph, Pid, outbound = Name, InDegree, OutDegree) ->
-    {Name, Pid} = digraph:vertex(Graph, Name),
-    InDegree    = digraph:in_degree(Graph, Name),
-    OutDegree   = digraph:out_degree(Graph, Name),
-    InDegree    = length([V || V <- digraph:in_neighbours(Graph, Name)]),
-    OutDegree   = length(digraph:out_neighbours(Graph, Name));
-check_fanout_vertex(Graph, _N, {Name, _Fn}, 1, 1) ->    
+check_fanout_vertex(Graph, #coop_dag_node{label=Label}, Inbound, InDegree, OutDegree) ->
+    {Inbound, Label} = digraph:vertex(Graph, Inbound),
+    InDegree   = digraph:in_degree(Graph, Inbound),
+    OutDegree  = digraph:out_degree(Graph, Inbound),
+    InDegree   = length(digraph:in_neighbours(Graph, Inbound)),
+    OutDegree  = length([V || V <- digraph:out_neighbours(Graph, Inbound)]);
+check_fanout_vertex(Graph, Pid, outbound = Outbound, InDegree, OutDegree) ->
+    {Outbound, Pid} = digraph:vertex(Graph, Outbound),
+    InDegree    = digraph:in_degree(Graph, Outbound),
+    OutDegree   = digraph:out_degree(Graph, Outbound),
+    InDegree    = length([V || V <- digraph:in_neighbours(Graph, Outbound)]),
+    OutDegree   = length(digraph:out_neighbours(Graph, Outbound));
+check_fanout_vertex(Graph, _N, {Name, Inbound, _Fn}, 1, 1) ->    
     {Name, #coop_node_fn{}} = digraph:vertex(Graph, Name),
-    [inbound] =  digraph:in_neighbours(Graph, Name),
+    [Inbound] =  digraph:in_neighbours(Graph, Name),
     [outbound] = digraph:out_neighbours(Graph, Name).
 
 fanout_flow(_Config) ->
     Self = self(),
     Router_Fn = #coop_dag_node{
-      name = inbound,
+      name = funnel,
       label = #coop_node_fn{init={?MODULE, init, [f2]}, task={?MODULE, times3}}
      },
     Worker_Node_Fns = [#coop_dag_node{
@@ -158,9 +158,9 @@ fanout_flow(_Config) ->
     Coop_Flow = coop_flow:fanout(Router_Fn, Worker_Node_Fns, Self),
     10 = digraph:no_vertices(Coop_Flow),
     16 = digraph:no_edges(Coop_Flow),
-    check_fanout_vertex(Coop_Flow, Router_Fn, inbound,  0, 8),
+    check_fanout_vertex(Coop_Flow, Router_Fn, funnel,  0, 8),
     check_fanout_vertex(Coop_Flow, Self, outbound, 8, 0),
-    [check_fanout_vertex(Coop_Flow, 8, {N,#coop_node_fn{}}, 1, 1) || N <- lists:seq(1,8)].
+    [check_fanout_vertex(Coop_Flow, 8, {N,funnel,#coop_node_fn{}}, 1, 1) || N <- lists:seq(1,8)].
 
 make_fanout_coop(Dataflow_Type, Num_Workers, Receiver_Pid) ->
     Kill_Switch = coop_kill_link_rcv:make_kill_switch(),
