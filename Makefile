@@ -58,3 +58,7 @@ coop_test: all
 
 examples_test: all
 	@(cd apps/ctest; ct_run -spec examples.spec -pa ../coop/ebin -pa ../examples/*/ebin -pa ../../deps/*/ebin)
+
+ct: coop_test
+
+et: examples_test
