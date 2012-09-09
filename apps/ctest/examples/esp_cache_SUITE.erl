@@ -271,26 +271,11 @@ value_request_add_replace(_Config) ->
 %%----------------------------------------------------------------------
 cache_coop(_Config) ->
     Cache_Coop = esp_cache:new_cache_coop(5),
-    {Key1, _Key2} = {foo, bar},
-    {Val1, _Val2} = {17, 4},
-
-    %% Try to replace a non-existent key's value...
+    {Key1, Key2} = {foo, bar},
+    {Val1, Val2} = {17, 4},
     Self = self(),
 
-    %% error_logger:info_msg("Coop: ~p~n", [Cache_Coop]),
-    %% Coop = Cache_Coop#coop.instances,
-    %% Vertices = digraph:vertices(Coop#coop_instance.dag),
-    %% G = Coop#coop_instance.dag,
-    %% [error_logger:info_msg("Vertex: ~p~n", [digraph:vertex(G,V)]) || V <- Vertices],
-    %% [error_logger:info_msg("Edge: ~p ~p IN: ~p OUT: ~p~n",
-    %%                        [V, digraph:edges(G, V),
-    %%                        digraph:in_degree(G, V),
-    %%                        digraph:out_degree(G, V)])
-    %%  || V <- Vertices],
-
-    %% erlang:trace_pattern({esp_cache, '_', '_'}, true),
-    %% erlang:trace(all, true, [send, 'receive', call]),
-
+    %% Verify directory empty, add a value, then see it is there.
     R1 = make_ref(),
     coop:relay_data(Cache_Coop, {num_keys, {R1, Self}}),
     timer:sleep(50),
@@ -300,9 +285,63 @@ cache_coop(_Config) ->
     coop:relay_data(Cache_Coop, {add, {Key1, {?VALUE, Val1}, {R2, Self}}}),
     timer:sleep(50),
     true = coop:is_live(Cache_Coop),
-    [{R2, Val1}] = check_worker([]),
     R3 = make_ref(),
-    coop:relay_data(Cache_Coop, {num_keys, {R3, Self}}),
+    coop:relay_data(Cache_Coop, {lookup, {Key1, {R3, Self}}}),
     timer:sleep(50),
     true = coop:is_live(Cache_Coop),
-    [{R3, 1}] = check_worker([]).
+    [{R2, Val1},{R3, Val1}] = check_worker([]),
+    R4 = make_ref(),
+    coop:relay_data(Cache_Coop, {num_keys, {R4, Self}}),
+    timer:sleep(50),
+    true = coop:is_live(Cache_Coop),
+    [{R4, 1}] = check_worker([]),
+    
+    %% Replace the value, then see if it can be retrieved.
+    R5 = make_ref(),
+    coop:relay_data(Cache_Coop, {replace, {Key1, {?VALUE, Val2}, {R5, Self}}}),
+    timer:sleep(50),
+    R6 = make_ref(),
+    coop:relay_data(Cache_Coop, {num_keys, {R6, Self}}),
+    timer:sleep(50),
+    true = coop:is_live(Cache_Coop),
+    [{R5, Val2}, {R6, 1}] = check_worker([]),
+    R7 = make_ref(),
+    coop:relay_data(Cache_Coop, {lookup, {Key1, {R7, Self}}}),
+    timer:sleep(50),
+    true = coop:is_live(Cache_Coop),
+    R8 = make_ref(),
+    coop:relay_data(Cache_Coop, {num_keys, {R8, Self}}),
+    timer:sleep(50),
+    true = coop:is_live(Cache_Coop),
+    [{R7, Val2},{R8, 1}] = check_worker([]),
+    
+    %% Verify that missing values return undefined.
+    R9 = make_ref(),
+    coop:relay_data(Cache_Coop, {lookup, {Key2, {R9, Self}}}),
+    timer:sleep(50),
+    true = coop:is_live(Cache_Coop),
+    RA = make_ref(),
+    coop:relay_data(Cache_Coop, {num_keys, {RA, Self}}),
+    timer:sleep(50),
+    true = coop:is_live(Cache_Coop),
+    [{R9, undefined},{RA, 1}] = check_worker([]),
+    
+    %% Verify that remove works.
+    RB = make_ref(),
+    coop:relay_data(Cache_Coop, {remove, {Key1, {RB, Self}}}),
+    timer:sleep(50),
+    true = coop:is_live(Cache_Coop),
+    RC = make_ref(),
+    coop:relay_data(Cache_Coop, {num_keys, {RC, Self}}),
+    timer:sleep(50),
+    true = coop:is_live(Cache_Coop),
+    RD = make_ref(),
+    coop:relay_data(Cache_Coop, {lookup, {Key2, {RD, Self}}}),
+    timer:sleep(50),
+    true = coop:is_live(Cache_Coop),
+    RE = make_ref(),
+    coop:relay_data(Cache_Coop, {remove, {Key1, {RE, Self}}}),
+    timer:sleep(50),
+    true = coop:is_live(Cache_Coop),
+    [{RB,Val2},{RC,0},{RD,undefined},{RE,undefined}] = check_worker([]).
+

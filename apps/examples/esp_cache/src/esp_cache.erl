@@ -146,14 +146,17 @@ value_request(State, {num_keys, {Ref, Rcvr}}) ->
 %% Expiration of process removes all references to it in process dictionary.
 %%  Key => Coop_Node  +  {Key, Coop_Node} => Node_Data_Pid (the monitored Pid that went down)
 value_request(State, {'DOWN', _Ref, process, Pid, _Reason}) ->
-    [begin erase(Key), erase(Coop_Key) end || {Key, _Coop_Node} = Coop_Key <- get_keys(Pid)],
+    [begin erase(Key), erase(Coop_Key) end || {Key, _Coop_Node} = Coop_Key <- get_keys(Pid), get(Coop_Key) =:= Pid],
     {State, ?COOP_NOOP};
 
 %% New dynamically created Coop_Nodes are monitored and placed in the process dictionary.
+%% Any existing Coop_Node for the same key is expired.
 value_request(State, {new, Key, #coop_node{task_pid=Node_Task_Pid} = Coop_Node}) ->
     erlang:monitor(process, Node_Task_Pid),
-    put({Key, Coop_Node}, Node_Task_Pid),
-    put(Key, Coop_Node),
+    case {put({Key, Coop_Node}, Node_Task_Pid), put(Key, Coop_Node)} of
+        {undefined, undefined} -> no_existing_datum_to_expire;
+        {Old_Coop_Node, _}     -> erlang:demonitor(process, Node_Task_Pid), coop:relay_data(Old_Coop_Node, {expire})
+    end,
     {State, ?COOP_NOOP}.
 
 
@@ -225,6 +228,7 @@ new_datum_node(Coop_Head, Kill_Switch, V) ->
 init_datum(V) -> V.
 
 %% Cached datum is relayed to requester, no downstream listeners.
+manage_datum(_Datum, {expire}                                 ) -> exit(normal);
 manage_datum( Datum, {expire,               {Ref, Requester}} ) -> coop:relay_data(Requester, {Ref, Datum}), exit(normal);
 manage_datum( Datum, {get_value,            {Ref, Requester}} ) -> coop:relay_data(Requester, {Ref, Datum}), {Datum, ?COOP_NOOP};
 manage_datum(_Datum, {replace,   New_Value, {Ref, Requester}} ) -> coop:relay_data(Requester, {Ref, New_Value}), {New_Value, ?COOP_NOOP}.
