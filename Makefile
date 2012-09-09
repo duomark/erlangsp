@@ -51,8 +51,10 @@ realclean: clean relclean
 	@${REBAR} del-deps
 	@rm -rf deps/*
 
-test: all
-	make ct
+test: all coop_test examples_test
 
-ct: all
-	@(cd apps/ctest; ct_run -spec coop.spec -pa ../coop/ebin -pa ../examples/*/ebin -pa ../../deps/*/ebin)
+coop_test: all
+	@(cd apps/ctest; ct_run -spec coop.spec -pa ../coop/ebin -pa ../../deps/*/ebin)
+
+examples_test: all
+	@(cd apps/ctest; ct_run -spec examples.spec -pa ../coop/ebin -pa ../examples/*/ebin -pa ../../deps/*/ebin)

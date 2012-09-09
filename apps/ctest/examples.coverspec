@@ -1,0 +1,2 @@
+{export, "./examples/logs/cover"}.
+{incl_mods, [esp_cache]}.
