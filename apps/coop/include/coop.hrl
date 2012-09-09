@@ -40,6 +40,7 @@
 
 %% TODO: Add 'select' to execute M:F(A) to determine one or more destinations
 %% TODO: Add 'shuffle' to randomly sample without duplicates
+%% TODO: Add 'replace' to use replacement policy to select process
 %% TODO: Add 'consume' to use round_robin but expire at end of task
 %% TODO:   consume requires {Init_Count, Threshold_Count, Replenish_Count}
 
