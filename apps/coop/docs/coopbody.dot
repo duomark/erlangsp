@@ -1,0 +1,39 @@
+digraph G {
+  style=filled, shape=box, color=black, style=solid
+  rankdir=TB
+
+	subgraph cluster_0 {
+		label = "Co-op Head", labeljust = c
+
+subgraph {
+    rank=same;
+    DAG  [shape=record, label="{DAG Template | <skel> Internal Skeleton}"]
+    Channel [shape=record, style=filled, fillcolor=lightgrey, label="<Monitor> Monitor | <Root> Root"];
+}
+}
+
+  subgraph cluster_1 {
+    label = "Co-op Body", labeljust = r;
+    node [shape=box, style=filled, fillcolor=lightgrey];
+    anchor1 [style=invisible], split, anchor2 [style=invisible]
+
+    DAG:skel:se -> anchor2 [style=dashed];
+    Channel:Root -> split;
+    anchor1 -> Channel:Monitor;
+
+    split -> i1;
+    split -> i2;
+    split -> i3;
+    i1 -> j1 -> merge;
+    i2 -> j2 -> merge;
+    i3 -> j3 -> merge;
+  }
+
+  node [label="External Co-op", shape=box, style=filled, fillcolor=lightgrey];
+  subgraph {rank=same; out1, out2 out3 }
+
+  node [label="", style=invisible];
+  i2 -> out1
+  j3 -> out2
+  merge -> out3
+}

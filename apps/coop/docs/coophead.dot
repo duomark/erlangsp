@@ -1,0 +1,48 @@
+digraph G {
+  style=filled, shape=box, color=black, style=solid
+  rankdir=LR
+
+	subgraph cluster_0 {
+		label = "Co-op Head", labeljust = c
+
+subgraph {
+    rank=same;
+    MonProcs [shape=record, style=filled, fillcolor=lightgrey, label="<Log> Log | <Reflection> Reflection | <Trace> Trace"]
+    CtlProcs [shape=record, style=filled, fillcolor=lightgrey, label="<Control> Control | <Data> Data"]
+//    CtlProcs [shape=record, style=filled, fillcolor=lightgrey, label="{<Control> Control | <Data> Data} | <Coop> Co-op Recever"]
+}
+subgraph {
+    rank=same;
+    DAG  [shape=record, label="DAG Template | <skel> Internal Skeleton"]
+    Channel [shape=record, style=filled, fillcolor=lightgrey, label="<Monitor> Monitor | <Root> Root"];
+    DataProcs [shape=record,label="<datatop> Data Item 1 | Data Item 2 | ...  | Data Item N"]
+}
+
+    CtlProcs:Control -> Channel:Root;
+    CtlProcs:Data -> DataProcs:datatop
+    DataProcs:datatop -> Channel:Root;
+    Channel:Monitor -> MonProcs:Log;
+    Channel:Monitor -> MonProcs:Reflection;
+    Channel:Monitor -> MonProcs:Trace; 
+	}
+
+
+  subgraph {
+    rank=same,
+    Body [label="Co-op Body", shape=box, style=filled, fillcolor=lightgrey]
+  }
+  Channel:Root -> Body:sw;
+  Body:w -> Channel:Monitor;
+  DAG:skel -> Body:n [style=dashed];
+
+  node [label="", style=invisible];
+
+  out [label="<logout> | <refout> | <traceout>", shape=record]
+  out:logout -> MonProcs:Log [dir=back]
+  out:refout -> MonProcs:Reflection [dir=back]
+  out:traceout -> MonProcs:Trace [dir=back]
+
+  in [label="<control> | <data>", shape=record]
+  in:control -> CtlProcs:Control
+  in:data -> CtlProcs:Data
+}
