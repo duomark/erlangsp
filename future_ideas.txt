@@ -1,0 +1,7 @@
+Ideas for example co-ops:
+  * esp_pool: simple pooling
+  * esp_skiplist: process per vertical index (distributed skiplist paper)
+  * UUID https://github.com/okeuday/uuid
+  * Trie: https://github.com/okeuday/trie
+  * Skewbinheap: https://github.com/okeuday/skewbinheap
+  * mergesort

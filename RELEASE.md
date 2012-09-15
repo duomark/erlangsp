@@ -7,12 +7,11 @@ Version Releases
 
 0.0.2 Under development
 
-  * More example Co-ops
-  * coop new option: raw_pids
+  * coop_node:new/5,6 option 'raw_pid'
 
-0.0.1 Released Sept 17, 2012
+0.0.1 Released Sept 16, 2012
 
   * esp_cache Co-op example: Directory, Workers and Cached data
-  * coop:new option: access_coop_head
+  * coop_node:new/5,6 option 'access_coop_head'
   * Initial creation of Co-op modules
   * Initial creation of Erlang/SP
