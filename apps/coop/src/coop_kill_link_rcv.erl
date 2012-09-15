@@ -1,15 +1,17 @@
 %%%------------------------------------------------------------------------------
 %%% @copyright (c) 2012, DuoMark International, Inc.  All rights reserved
 %%% @author Jay Nelson <jay@duomark.com>
+%%% @reference The license is based on the template for Modified BSD from
+%%%   <a href="http://opensource.org/licenses/BSD-3-Clause">OSI</a>
 %%% @doc
 %%%    Receive loop for the Coop Kill Switch process.
 %%% @since v0.0.1
 %%% @end
 %%%------------------------------------------------------------------------------
 -module(coop_kill_link_rcv).
+-author('Jay Nelson <jay@duomark.com>').
 
 -include("../erlangsp/include/license_and_copyright.hrl").
--author(jayn).
 
 %% Graph API
 -export([make_kill_switch/0, link_to_kill_switch/2, link_loop/0]).
