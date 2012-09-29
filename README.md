@@ -79,4 +79,5 @@ Documentation
 
 The current documentation is rudimentary because the underlying software is changing quickly. There should be enough information to try out the libraries and examples, but it is not formatted in a nice way. There is a separate 'docs' directory in each of the apps or examples directories written in markdown so that it can be easily browsed from github with a browser:
 
+  1. [Tutorial](erlangsp/tree/master/apps/examples/tutorial/README.md)
   1. [Co-op docs](erlangsp/tree/master/apps/coop/docs/README.md)

@@ -1,11 +1,12 @@
+
 Co-op Library (Cooperating Processes)
 =====================================
 
 A Co-op is a collection of processes arranged in a Directed Acyclic Graph (using Erlang's digraph module). Nodes of the graph are processes; edges represent messaging from an upstream process to a downstream process. The structure is maintained as a static digraph template when initially specified, a digraph containing live erlang processes at each graph node, and the same erlang processes connected via internal state references to downstream pids such that messages are sent directly to known pids without name lookup in the normal dataflow case.
 
-```
 Here is a simple example of a Pipeline Co-op calculating 3*(x+2) - Number_of_Data_Items_Seen:
 
+```
 -module(example).
 -export([plus2/2, times3/2, minus_seen/2]).
 
@@ -21,7 +22,7 @@ coop:relay_data(Coop_Head, 4),
 receive Any -> Any end.
 ```
 
-Setting up the constituent pipeline functions involves filling in records with an init function for the initial State (which is consistently ignored in this example) plus setting the function task to execute. The call to coop:new_pipeline/2 creates a graph and a process for each stage of the pipeline, with each one executing the corresponding exported function. The data relayed in (4 in this case) is passed through the first stage (4+2 => 6) and then to the next stage (6*3 => 18) and finally to the last stage (18-0 => 18, while the State is incremented by one so that on the next pass it will be 1) with the result sent as a message to the Receiver which was set to self(), where we can safely fetch it from the erlang message queue. If the calculation were change to be 3*(x-Num_Seen) + 2 we could just rearrange the order of the functions in the pipeline and make a new instance of the Co-op to perform the new calculation. The focus is on representing the computation as the flow of data from function to function, allowing the VM to execute the functions concurrently on different problem instances simultaneously.
+Setting up the constituent pipeline functions involves filling in records with an init function for the initial State (which is consistently ignored in this example) plus setting the function task to execute. The call to coop:new_pipeline/2 creates a graph and a process for each stage of the pipeline, with each one executing the corresponding exported function. The data relayed in (4 in this case) is passed through the first stage (4+2 => 6) and then to the next stage (6x3 => 18) and finally to the last stage (18-0 => 18, while the State is incremented by one so that on the next pass it will be 1) with the result sent as a message to the Receiver which was set to self(), where we can safely fetch it from the erlang message queue. If the calculation were change to be 3 x (X-Num_Seen) + 2 we could just rearrange the order of the functions in the pipeline and make a new instance of the Co-op to perform the new calculation. The focus is on representing the computation as the flow of data from function to function, allowing the VM to execute the functions concurrently on different problem instances simultaneously.
 
 In a pipeline the only choice is to serially pass the data from stage to stage. The current version also allows a fanout rather than a pipeline, in which case the data can be sent to one of the children nodes, or all of the children nodes.
 

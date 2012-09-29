@@ -1,0 +1,27 @@
+digraph G {
+  node [style=invisible];
+  In, Out1, Out2, Out3, Out4
+
+  subgraph {
+  node [shape=box, style=filled, fillcolor=lightgrey];
+    subgraph cluster_1 {
+ 	    label = "Co-op Fan out", labeljust = c, color = white;
+      {rank=same; Http_Request; }
+      {rank=same; GET; PUT; POST; DELETE; }
+      {rank=same; Out1; Out2; Out3; Out4; Kill_Switch [fillcolor=white]; }
+
+      In -> Http_Request;
+      Http_Request -> GET -> Out1;
+      Http_Request -> PUT -> Out2;
+      Http_Request -> POST -> Out3;
+      Http_Request -> DELETE -> Out4;
+
+      edge [style=dashed, dir=both]
+      Kill_Switch -> Http_Request;
+      Kill_Switch -> GET;
+      Kill_Switch -> PUT;
+      Kill_Switch -> POST;
+      Kill_Switch -> DELETE;
+    }
+  }
+}
