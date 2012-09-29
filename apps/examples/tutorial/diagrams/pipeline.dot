@@ -1,0 +1,20 @@
+digraph G {
+  node [style=invisible];
+  In, Out
+
+  subgraph {
+  node [shape=box, style=filled, fillcolor=lightgrey];
+    subgraph cluster_1 {
+ 	    label = "Co-op Pipeline", labeljust = c, color = white;
+      {rank=same; Filter; Scale; Deliver, In, Out}
+      {rank=same; Kill_Switch [fillcolor=white]; }
+    }
+  }
+
+  In -> Filter -> Scale -> Deliver -> Out;
+
+  edge [style=dashed, dir=both]
+  Filter -> Kill_Switch;
+  Scale -> Kill_Switch;
+  Deliver -> Kill_Switch;
+}
