@@ -7,7 +7,9 @@ Version Releases
 
 0.0.2 Under development
 
-  * coop_node:new/5,6 option 'raw_pid'
+  * esp_tcp library module for simple fanout of TCP acceptors
+  * esp_http library module to parse HTTP Requests
+  * Tutorial at apps/examples/tutorial/README.md
 
 0.0.1 Released Sept 16, 2012
 

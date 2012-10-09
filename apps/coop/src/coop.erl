@@ -95,10 +95,11 @@ make_dag_node(Name, Init_Fn, Task_Fn, Opts) ->
 
 make_dag_node(Name, {_Imod, _Ifun, _Iargs} = Init_Fn, {_Mod, _Fun} = Task_Fn, Opts, Data_Flow)
   when is_atom(_Imod), is_atom(_Ifun), is_atom(_Mod), is_atom(_Fun), is_list(Opts) ->
-    case length([T || T <- ?DATAFLOW_TYPES, Data_Flow =:= T]) of
-        1 -> #coop_dag_node{name=Name, label=#coop_node_fn{init=Init_Fn, task=Task_Fn,
-                                                           options=Opts, flow=Data_Flow}};
-        0 -> {error, {invalid_data_flow_method, Data_Flow}}
+    case lists:member(Data_Flow, ?DATAFLOW_TYPES) of
+        true  ->
+            Label = #coop_node_fn{init=Init_Fn, task=Task_Fn, options=Opts, flow=Data_Flow},
+            #coop_dag_node{name=Name, label=Label};
+        false -> {error, {invalid_data_flow_method, Data_Flow}}
     end.
 
     
