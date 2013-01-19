@@ -1,7 +1,10 @@
 REBAR=./rebar
-ALL_APPS_DIRS=apps/*
-ALL_EXAMPLE_DIRS=apps/examples/*
-CT_LOG_DIRS=apps/ctest/logs
+ALL_APPS_DIRS=src/*
+ALL_EXAMPLE_DIRS=src/examples/*
+COMMON_TEST=ctest
+COMMON_TEST_LOG_DIRS=${COMMON_TEST}/logs
+CT_DEPS=../deps
+CT_TOP=../src
 
 all: deps compile
 
@@ -30,9 +33,11 @@ gc: crash
 	@rm -f ${ALL_EXAMPLE_DIRS}/src/*/*.P
 	@rm -f ${ALL_EXAMPLE_DIRS}/src/*.beam
 	@rm -f ${ALL_EXAMPLE_DIRS}/src/*/*.beam
+	@echo 'Removing all common_test beams'
+	@rm -f ${COMMON_TEST}/*/*.beam
 	@echo 'Removing all common_test logs'
-	@rm -rf ${CT_LOG_DIRS}/*.*
-	@rm -f ${CT_LOG_DIRS}/variables-ct*
+	@rm -rf ${COMMON_TEST_LOG_DIRS}/*.*
+	@rm -f ${COMMON_TEST_LOG_DIRS}/variables-ct*
 
 rel: all
 	@echo 'Generating erlangsp release'
@@ -52,18 +57,18 @@ realclean: clean relclean
 	@rm -rf deps/*
 
 test: all
-	@(cd apps/ctest; ct_run -spec coop.spec -pa ../coop/ebin -pa ../../deps/*/ebin)
-	@(cd apps/ctest; ct_run -spec esp.spec -pa ../coop/ebin -pa ../erlangsp/include -pa ../erlangsp/ebin -pa ../../deps/*/ebin)
-	@(cd apps/ctest; ct_run -spec examples.spec -pa ../coop/ebin -pa ../examples/*/ebin -pa ../../deps/*/ebin)
+	@(cd ${COMMON_TEST}; ct_run -spec coop.spec -pz ${CT_TOP}/coop/ebin -pz ${CT_DEPS}/*/ebin)
+	@(cd ${COMMON_TEST}; ct_run -spec esp.spec -pz ${CT_TOP}/coop/ebin -pz ${CT_TOP}/erlangsp/ebin -pz ${CT_DEPS}/*/ebin)
+	@(cd ${COMMON_TEST}; ct_run -spec examples.spec -pz ${CT_TOP}/coop/ebin -pz ${CT_TOP}/erlangsp/ebin -pz ${CT_TOP}/examples/*/ebin -pz ${CT_DEPS}/*/ebin)
 
 coop_test: all
-	@(cd apps/ctest; ct_run -spec coop.spec -pa ../coop/ebin -pa ../../deps/*/ebin)
+	@(cd ${COMMON_TEST}; ct_run -spec coop.spec -pz ${CT_TOP}/coop/ebin -pz ${CT_DEPS}/*/ebin)
 
 esp_test: all
-	@(cd apps/ctest; ct_run -spec esp.spec -pa ../coop/ebin -pa ../erlangsp/include -pa ../erlangsp/ebin -pa ../../deps/*/ebin)
+	@(cd ${COMMON_TEST}; ct_run -spec esp.spec -pz ${CT_TOP}/coop/ebin  -pz ${CT_TOP}/erlangsp/ebin -pz ${CT_DEPS}/*/ebin)
 
 examples_test: all
-	@(cd apps/ctest; ct_run -spec examples.spec -pa ../coop/ebin -pa ../examples/*/ebin -pa ../../deps/*/ebin)
+	@(cd ${COMMON_TEST}; ct_run -spec examples.spec -pz ${CT_TOP}/coop/ebin -pz ${CT_TOP}/erlangsp/ebin -pz ${CT_TOP}/examples/*/ebin -pz ${CT_DEPS}/*/ebin)
 
 ct: coop_test
 
