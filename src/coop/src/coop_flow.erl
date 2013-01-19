@@ -9,9 +9,9 @@
 %%% @end
 %%%------------------------------------------------------------------------------
 -module(coop_flow).
--author('Jay Nelson <jay@duomark.com>').
 
--include("../erlangsp/include/license_and_copyright.hrl").
+-include("../../license_and_copyright.hrl").
+-author('Jay Nelson <jay@duomark.com>').
 
 %% Friendly API
 -export([pipeline/1, chain_vertices/2, fanout/3]).

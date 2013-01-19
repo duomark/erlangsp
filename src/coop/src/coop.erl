@@ -9,9 +9,9 @@
 %%% @end
 %%%------------------------------------------------------------------------------
 -module(coop).
--author('Jay Nelson <jay@duomark.com>').
 
--include("../erlangsp/include/license_and_copyright.hrl").
+-include("../../license_and_copyright.hrl").
+-author('Jay Nelson <jay@duomark.com>').
 
 %% External API
 -export([

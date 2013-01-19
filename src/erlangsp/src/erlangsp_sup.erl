@@ -11,7 +11,7 @@
 -module(erlangsp_sup).
 -author('Jay Nelson <jay@duomark.com>').
 
--include("license_and_copyright.hrl").
+-include("../../license_and_copyright.hrl").
 
 -behaviour(supervisor).
 

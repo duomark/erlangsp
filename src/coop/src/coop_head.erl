@@ -33,9 +33,9 @@
 %%% @end
 %%%------------------------------------------------------------------------------
 -module(coop_head).
--author('Jay Nelson <jay@duomark.com>').
 
--include("../erlangsp/include/license_and_copyright.hrl").
+-include("../../license_and_copyright.hrl").
+-author('Jay Nelson <jay@duomark.com>').
 
 %% Graph API
 -export([

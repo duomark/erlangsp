@@ -15,7 +15,7 @@
 %%%------------------------------------------------------------------------------
 -module(esp_tcp).
 
--include_lib("erlangsp/include/license_and_copyright.hrl").
+-include("../../license_and_copyright.hrl").
 -author('Jay Nelson <jay@duomark.com>').
 
 %% Public API

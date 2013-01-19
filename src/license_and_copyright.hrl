@@ -1,8 +1,8 @@
 -license("Modified BSD License").
--copyright("(c) 2012, DuoMark International, Inc.  All rights reserved").
+-copyright("(c) 2012-2013, DuoMark International, Inc.  All rights reserved").
 
 %%%------------------------------------------------------------------------------
-%%% Copyright (c) 2012, DuoMark International, Inc.
+%%% Copyright (c) 2012-2013, DuoMark International, Inc.
 %%% All rights reserved.
 %%% 
 %%% Redistribution and use in source and binary forms, with or without

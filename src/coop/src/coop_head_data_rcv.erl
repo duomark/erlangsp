@@ -9,9 +9,9 @@
 %%% @end
 %%%------------------------------------------------------------------------------
 -module(coop_head_data_rcv).
--author('Jay Nelson <jay@duomark.com>').
 
--include("../erlangsp/include/license_and_copyright.hrl").
+-include("../../license_and_copyright.hrl").
+-author('Jay Nelson <jay@duomark.com>').
 
 %% Receive loop methods
 -export([one_at_a_time_loop/2, relay_msg_to_root_pid/3]).

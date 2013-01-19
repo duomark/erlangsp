@@ -9,9 +9,9 @@
 %%% @end
 %%%------------------------------------------------------------------------------
 -module(coop_node_util).
--author('Jay Nelson <jay@duomark.com>').
 
--include("../erlangsp/include/license_and_copyright.hrl").
+-include("../../license_and_copyright.hrl").
+-author('Jay Nelson <jay@duomark.com>').
 
 -export([random_worker/1]).
 

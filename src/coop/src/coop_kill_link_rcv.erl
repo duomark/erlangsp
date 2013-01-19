@@ -9,9 +9,9 @@
 %%% @end
 %%%------------------------------------------------------------------------------
 -module(coop_kill_link_rcv).
--author('Jay Nelson <jay@duomark.com>').
 
--include("../erlangsp/include/license_and_copyright.hrl").
+-include("../../license_and_copyright.hrl").
+-author('Jay Nelson <jay@duomark.com>').
 
 %% Graph API
 -export([make_kill_switch/0, link_to_kill_switch/2, link_loop/0]).
