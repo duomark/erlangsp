@@ -1,6 +1,6 @@
 -module(esp_cache_SUITE).
 
--include("../../erlangsp/include/license_and_copyright.hrl").
+-include("../../src/license_and_copyright.hrl").
 -include_lib("common_test/include/ct.hrl").
 
 %% Suite functions
@@ -19,9 +19,9 @@
 %% Spawned functions must be exported
 -export([check_worker/2, compute_value/1]).
 
--include("../../coop/include/coop.hrl").
--include("../../coop/include/coop_dag.hrl").
--include("../../examples/esp_cache/include/esp_cache.hrl").
+-include_lib("coop/include/coop.hrl").
+-include_lib("coop/include/coop_dag.hrl").
+-include_lib("esp_cache/include/esp_cache.hrl").
 
 all() -> [
           datum_value,

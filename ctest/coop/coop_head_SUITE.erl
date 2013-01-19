@@ -1,6 +1,6 @@
 -module(coop_head_SUITE).
 
--include_lib("../../erlangsp/include/license_and_copyright.hrl").
+-include("../../src/license_and_copyright.hrl").
 -include_lib("common_test/include/ct.hrl").
 
 %% Suite functions
@@ -28,7 +28,7 @@
          result_node_ctl/0, result_node_task/0, result_coop_node/0
         ]).
 
--include("../../coop/include/coop.hrl").
+-include_lib("coop/include/coop.hrl").
  
 groups() -> [{ctl_tests, [sequence],
               [

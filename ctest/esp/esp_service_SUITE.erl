@@ -1,9 +1,9 @@
 -module(esp_service_SUITE).
 
--include("../../erlangsp/include/license_and_copyright.hrl").
+-include_lib("../../src/license_and_copyright.hrl").
 -include_lib("common_test/include/ct.hrl").
--include("../../coop/include/coop.hrl").
--include("../../coop/include/coop_dag.hrl").
+-include_lib("coop/include/coop.hrl").
+-include_lib("coop/include/coop_dag.hrl").
 
 %% Suite functions
 -export([all/0, init_per_suite/1, end_per_suite/1]).

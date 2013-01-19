@@ -1,9 +1,9 @@
 -module(coop_node_SUITE).
 
--include_lib("../../erlangsp/include/license_and_copyright.hrl").
+-include("../../src/license_and_copyright.hrl").
 -include_lib("common_test/include/ct.hrl").
--include("../../coop/include/coop.hrl").
--include("../../coop/include/coop_dag.hrl").
+-include_lib("coop/include/coop.hrl").
+-include_lib("coop/include/coop_dag.hrl").
 
 %% Suite functions
 -export([
