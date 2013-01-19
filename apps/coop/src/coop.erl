@@ -16,7 +16,8 @@
 %% External API
 -export([
          new_pipeline/2, new_fanout/3,
-         make_dag_node/4, make_dag_node/5,
+         make_dag_node/3, make_dag_node/4, make_dag_node/5,
+         make_dag_nodes/4, make_dag_nodes/5, make_dag_nodes/6,
          get_head_kill_switch/1, get_body_kill_switch/1,
          is_live/1, relay_data/2, relay_high_priority_data/2
         ]).
@@ -90,6 +91,9 @@ make_coop_instance(Id, Head, Body, Dag)
         _Other -> {error, invalid_head_or_body}
     end.
 
+make_dag_node(Init_Fn, Task_Fn, Opts) ->
+    make_dag_node(undefined, Init_Fn, Task_Fn, Opts).
+    
 make_dag_node(Name, Init_Fn, Task_Fn, Opts) ->
     make_dag_node(Name, Init_Fn, Task_Fn, Opts, broadcast).
 
@@ -102,6 +106,30 @@ make_dag_node(Name, {_Imod, _Ifun, _Iargs} = Init_Fn, {_Mod, _Fun} = Task_Fn, Op
         false -> {error, {invalid_data_flow_method, Data_Flow}}
     end.
 
+make_dag_nodes(N, Init_Fn, Task_Fn, Opts) ->
+    make_dag_nodes([], N, undefined, Init_Fn, Task_Fn, Opts, broadcast).
+
+make_dag_nodes(N, Name, Init_Fn, Task_Fn, Opts) when is_list(Name); Name =:= undefined ->
+    make_dag_nodes([], N, Name, Init_Fn, Task_Fn, Opts, broadcast).
+    
+make_dag_nodes(N, Name, Init_Fn, Task_Fn, Opts, Data_Flow) when is_list(Name); Name =:= undefined ->
+    make_dag_nodes([], N, Name, Init_Fn, Task_Fn, Opts, Data_Flow).
+
+make_dag_nodes([], N, Name, Init_Fn, Task_Fn, Opts, Data_Flow)
+  when is_integer(N), is_list(Opts) ->
+    case lists:member(Data_Flow, ?DATAFLOW_TYPES) of
+        false -> {error, {invalid_data_flow_method, Data_Flow}};
+        true  -> Label = #coop_node_fn{init=Init_Fn, task=Task_Fn, options=Opts, flow=Data_Flow},
+                 make_n_dag_nodes([], N, Name, Label)
+    end.
+
+make_n_dag_nodes(New_Nodes, 0, _Name,     _Label) -> New_Nodes;
+make_n_dag_nodes(New_Nodes, N, undefined,  Label) ->
+    make_n_dag_nodes([#coop_dag_node{label=Label} | New_Nodes], N-1, undefined, Label);
+make_n_dag_nodes(New_Nodes, N, Name,       Label) ->
+    Name_Str = Name ++ "-" ++ integer_to_list(N),
+    make_n_dag_nodes([#coop_dag_node{name=Name_Str, label=Label} | New_Nodes], N-1, undefined, Label).
+    
     
 %%----------------------------------------------------------------------
 %% Get a reference to the Co-op Head or Co-op Body kill switch Pid.
@@ -206,7 +234,7 @@ fanout(Coop_Head, Kill_Switch, #coop_dag_node{name=Inbound} = Router_Fn,
     Fanout_Graph = coop_flow:fanout(Router_Fn, Workers, Receiver),
     fanout(Inbound, Coop_Head, Kill_Switch, Fanout_Graph).
     
-fanout(Inbound, Coop_Head ,Kill_Switch, Fanout_Template_Graph) ->
+fanout(Inbound, Coop_Head, Kill_Switch, Fanout_Template_Graph) ->
     Coops_Graph = digraph:new([acyclic]),
     {Inbound, #coop_node_fn{init=Inbound_Init_Fn, task=Inbound_Task_Fn, options=Opts, flow=Inbound_Dataflow}}
         = digraph:vertex(Fanout_Template_Graph, Inbound),
