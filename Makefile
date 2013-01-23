@@ -59,7 +59,7 @@ realclean: clean relclean
 test: all
 	@(cd ${COMMON_TEST}; ct_run -spec coop.spec -pz ${CT_TOP}/coop/ebin -pz ${CT_DEPS}/*/ebin)
 	@(cd ${COMMON_TEST}; ct_run -spec esp.spec -pz ${CT_TOP}/coop/ebin -pz ${CT_TOP}/erlangsp/ebin -pz ${CT_DEPS}/*/ebin)
-	@(cd ${COMMON_TEST}; ct_run -spec examples.spec -pz ${CT_TOP}/coop/ebin -pz ${CT_TOP}/erlangsp/ebin -pz ${CT_TOP}/examples/*/ebin -pz ${CT_DEPS}/*/ebin)
+##	@(cd ${COMMON_TEST}; ct_run -spec examples.spec -pz ${CT_TOP}/coop/ebin -pz ${CT_TOP}/erlangsp/ebin -pz ${CT_TOP}/examples/*/ebin -pz ${CT_DEPS}/*/ebin)
 
 coop_test: all
 	@(cd ${COMMON_TEST}; ct_run -spec coop.spec -pz ${CT_TOP}/coop/ebin -pz ${CT_DEPS}/*/ebin)
@@ -67,8 +67,8 @@ coop_test: all
 esp_test: all
 	@(cd ${COMMON_TEST}; ct_run -spec esp.spec -pz ${CT_TOP}/coop/ebin  -pz ${CT_TOP}/erlangsp/ebin -pz ${CT_DEPS}/*/ebin)
 
-examples_test: all
-	@(cd ${COMMON_TEST}; ct_run -spec examples.spec -pz ${CT_TOP}/coop/ebin -pz ${CT_TOP}/erlangsp/ebin -pz ${CT_TOP}/examples/*/ebin -pz ${CT_DEPS}/*/ebin)
+## examples_test: all
+##	@(cd ${COMMON_TEST}; ct_run -spec examples.spec -pz ${CT_TOP}/coop/ebin -pz ${CT_TOP}/erlangsp/ebin -pz ${CT_TOP}/examples/*/ebin -pz ${CT_DEPS}/*/ebin)
 
 ct: coop_test
 
