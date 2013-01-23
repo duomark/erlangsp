@@ -1,0 +1,11 @@
+{application, erlangsp,
+ [
+  {id,  "Erlang/SP"},
+  {vsn, "0.0.2"},
+  {description, "Erlang Services Platform Library"},
+  {modules, []},
+  {registered, []},
+  {applications, [kernel, stdlib, sasl, gs, appmon]},
+  {included_applications, []},
+  {env, []}
+]}.
