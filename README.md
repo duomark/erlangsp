@@ -37,7 +37,8 @@ On July 13, 2012 I came across http://github.com/bergie/noflo which is a Node.js
 Travis CI
 =========
 
-[![Build Status](http://travis-ci.org/duomark/erlangsp.png)](http://travis-ci.org/duomark/erlangsp])
+[![Build Status](https://travis-ci.org/duomark/erlangsp.png?branch=master)](https://travis-ci.org/duomark/erlangsp)
+
 
 [Travis-CI](http://about.travis-ci.org/) provides Continuous Integration. Travis automatically builds and runs the unit tests whenever the code is modified. The status of the current build is shown in the image badge directly above this paragraph.
 
